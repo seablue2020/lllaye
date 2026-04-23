@@ -1,0 +1,26 @@
+# Backend build output
+dist/
+build/
+
+# Environment
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/
+
+# Temporary files
+*.tmp
+*.temp
