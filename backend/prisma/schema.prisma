@@ -1,0 +1,600 @@
+// Prisma Schema for 欠薪支持起诉智能办案平台（检察端）
+// Database: PostgreSQL 16 with PostGIS
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis(map: "postgis")]
+}
+
+// ============================================================
+// 公共基础模型
+// ============================================================
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  password     String
+  realName     String
+  phone        String?
+  email        String?
+  idNo         String?  // 加密存储
+  orgId        String?
+  roleId       String
+  status       String   @default("active") // active, inactive, deleted
+  lastLoginAt  DateTime?
+  lastLoginIp  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  role         Role      @relation(fields: [roleId], references: [id])
+  org          Org?      @relation(fields: [orgId], references: [id])
+  assignedTasks Task[]
+  handledClues Clue[]
+  createdDocuments Document[] @relation("CreatedDocuments")
+  approvals    DocApproval[]
+  auditLogs    AuditLog[]
+  notifications Notification[]
+
+  @@map("sys_user")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  permissions String[] // 权限码列表
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+
+  @@map("sys_role")
+}
+
+model Org {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  parentId    String?
+  type        String   // province, city, district, bureau
+  address     String?
+  phone       String?
+  status      String   @default("active")
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent      Org?     @relation("OrgTree", fields: [parentId], references: [id])
+  children    Org[]    @relation("OrgTree")
+  users       User[]
+
+  @@map("sys_org")
+}
+
+model Dictionary {
+  id        String   @id @default(cuid())
+  type      String   // 字典类型
+  code      String   // 字典编码
+  label     String   // 字典标签
+  value     String   // 字典值
+  sortOrder Int      @default(0)
+  status    String   @default("active")
+  remark    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, code])
+  @@map("sys_dictionary")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // GET, POST, PUT, DELETE
+  module    String   // 模块名
+  bizId     String?  // 业务ID
+  detail    String?  // 详细信息(JSON)
+  ip        String?
+  userAgent String?
+  timestamp DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([module])
+  @@index([timestamp])
+  @@map("sys_audit_log")
+}
+
+// ============================================================
+// 线索与案件管理
+// ============================================================
+
+model Clue {
+  id                   String   @id @default(cuid())
+  clueNo               String   @unique // 线索编号: CX-YYYYMMDD-XXXX
+  applicantName        String   // 申请人姓名
+  applicantIdNo        String   // 身份证号（SM4加密）
+  applicantIdNoMasked  String?  // 脱敏后的身份证号
+  phone                String   // 联系电话（SM4加密）
+  phoneMasked          String?  // 脱敏后的电话
+
+  // 涉事主体
+  subjectType          String   // 个人, 企业, 包工头
+  subjectName          String   // 涉事主体名称
+  subjectIdNo          String?  // 企业统一社会信用代码 或 个人身份证
+  subjectContact       String?  // 联系方式
+  subjectAddress       String?  // 地址
+
+  // 项目/工地信息
+  projectName          String   // 项目/工地名称
+  projectAddress       String   // 项目地址
+  projectAddressStd    Json?    // 标准化地址 {province, city, district, street, road, project}
+  projectAddressEmbedding Json?  // 地址向量数据（JSON存储，语义聚合用）
+
+  // 案件信息
+  amount               Decimal? @db.Decimal(15, 2) // 欠薪金额
+  personCount          Int      @default(1) // 涉及人数
+  claimType            String   // support_prosecution, wage_complaint, legal_consult, other
+
+  // 来源信息
+  source               String   // frontend, hotline_12345, dept_share, unit_transfer
+  sourceDetail         String?  // 来源详细信息
+
+  // 诉求原文
+  claimOriginal        String   // 原始诉求
+  claimPolished        String?  // 润色后诉求
+  claimSummary         String?  // 诉求摘要
+
+  // 状态与风险
+  status               String   @default("pending_review") // pending_review, triaged, under_review, under_investigation, pending_document, closed, rejected
+  riskLevel            String?  // high, medium, low
+  riskReason           String?  // 风险原因
+  isKey                Boolean  @default(false) // 是否重点线索（前端勾选需要支持起诉）
+  isAggregated         Boolean  @default(false)
+  aggregateNo          String?  // 聚合编号
+  rejectionReason      String?
+
+  // 研判信息
+  aiPreAnalysis        Json?    // AI预分析结果
+  handlerId            String?
+  handlerName          String?
+  triageOpinion        String?
+  triageAt             DateTime?
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  reviewedAt           DateTime?
+  closedAt             DateTime?
+
+  handler             User?     @relation(fields: [handlerId], references: [id])
+  evidence            Evidence[]
+  flowRecords         ClueFlowRecord[]
+  tasks               Task[]
+  duplicateOf         DuplicateComplaint[] @relation("MainClue")
+  duplicatedBy         DuplicateComplaint[] @relation("DuplicateClue")
+  aggregateClues      AggregateClue[]
+
+  @@index([status])
+  @@index([riskLevel])
+  @@index([source])
+  @@index([claimType])
+  @@index([isKey])
+  @@index([aggregateNo])
+  @@index([createdAt])
+  @@map("clue")
+}
+
+model ClueFlowRecord {
+  id        String   @id @default(cuid())
+  clueId    String
+  node      String   // submit, receive, ai_analysis, triage, review, investigate, document, close
+  action    String   // 提交, AI预分析, 研判分流, 受理, 调查, 文书审核, 办结, 不予受理
+  operatorId String?
+  operatorName String?
+  opinion   String?  // 处理意见
+  status    String   @default("completed") // pending, completed
+  createdAt DateTime @default(now())
+
+  clue      Clue     @relation(fields: [clueId], references: [id], onDelete: Cascade)
+
+  @@index([clueId])
+  @@map("clue_flow_record")
+}
+
+model DuplicateComplaint {
+  id            String   @id @default(cuid())
+  mainClueId    String
+  duplicateClueId String
+  reason        String?  // 重复原因
+  status        String   @default("pending") // pending, merged, rejected
+  handleOpinion String?
+  handledBy     String?
+  handledAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  mainClue      Clue     @relation("MainClue", fields: [mainClueId], references: [id], onDelete: Cascade)
+  duplicateClue Clue     @relation("DuplicateClue", fields: [duplicateClueId], references: [id], onDelete: Cascade)
+
+  @@unique([mainClueId, duplicateClueId])
+  @@index([mainClueId])
+  @@map("duplicate_complaint")
+}
+
+model Case {
+  id           String   @id @default(cuid())
+  caseNo       String   @unique // 案件编号: AJ-YYYYMMDD-XXXX
+  clueId       String?  // 来源线索（可为多个线索合并）
+  title        String   // 案件标题
+  description  String?  // 案件描述
+
+  // 当事人信息
+  applicantName    String   // 申请人
+  applicantIdNo    String
+  applicantPhone   String
+  respondentName   String   // 被申请人
+  respondentOrg    String?  // 被申请人单位
+  respondentContact String?
+
+  // 金额信息
+  amount           Decimal? @db.Decimal(15, 2)
+  personCount      Int      @default(1)
+
+  // 状态
+  status           String   @default("pending") // pending, under_review, investigating, document_review, approved, closed, rejected
+  priority         String   @default("normal") // urgent, high, normal, low
+  caseType         String   @default("support_prosecution") // 案件类型
+
+  // 办理信息
+  handlerId        String?
+  handlerName      String?
+  handlerDeptId    String?
+  filedAt          DateTime?
+  closedAt         DateTime?
+
+  // AI审查结果
+  aiReviewResult   Json?
+  reviewConclusion String?  // accepted, need_more_evidence, rejected
+  reviewOpinion    String?
+
+  // 关联
+  documents        Document[]
+  reviewResults    ReviewResult[]
+  tasks            Task[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status])
+  @@index([handlerId])
+  @@index([caseType])
+  @@map("case")
+}
+
+// ============================================================
+// 证据材料管理
+// ============================================================
+
+model Evidence {
+  id              String   @id @default(cuid())
+  clueId          String
+  caseId          String?  // 证据可关联案件
+  fileName        String   // 原始文件名
+  filePath        String   // 存储路径
+  fileSize        Int?     // 文件大小(字节)
+  fileType        String   // contract,欠条, salary_statement, bank_flow, attendance, audio, video, photo, other
+  mimeType        String?
+
+  // AI分析结果
+  ocrResult       Json?    // OCR识别结果
+  semanticSummary String?  // 语义摘要
+  transcription   String?  // 音视频转写文本
+  keySegments     Json?    // 关键片段 [{time, content, speaker?}]
+
+  // 审查状态
+  reviewStatus    String   @default("pending") // pending, reviewed, defective
+  reviewOpinion   String?
+  aiConfidence    Decimal? @db.Decimal(5, 4)
+
+  // 文件元数据
+  uploadedBy      String?
+  uploadedAt      DateTime @default(now())
+  reviewedAt      DateTime?
+
+  clue            Clue     @relation(fields: [clueId], references: [id], onDelete: Cascade)
+
+  @@index([clueId])
+  @@index([fileType])
+  @@map("evidence")
+}
+
+// ============================================================
+// AI审查管理
+// ============================================================
+
+model ReviewResult {
+  id           String   @id @default(cuid())
+  caseId       String
+  dimension    String   // applicant_qualification, claim_clarity, evidence_sufficiency, jurisdiction, statute_of_limitations, case_type, risk_assessment
+  result       String   // pass, fail, warning
+  reason       String?  // 理由
+  confidence   Decimal? @db.Decimal(5, 4) // AI置信度
+  suggestions  String?  // 补充建议
+  confirmed    Boolean  @default(false)
+  confirmedBy  String?
+  confirmedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  case         Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("review_result")
+}
+
+model ReviewReport {
+  id           String   @id @default(cuid())
+  caseId       String   @unique
+  content      String   // 初步分析报告内容(JSON格式)
+  generatedBy  String   // AI
+  generatedAt  DateTime @default(now())
+  confirmedBy  String?
+  confirmedAt  DateTime?
+  status       String   @default("draft") // draft, confirmed, exported
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("review_report")
+}
+
+// ============================================================
+// 文书管理
+// ============================================================
+
+model Document {
+  id           String   @id @default(cuid())
+  docNo        String   @unique // 文书编号
+  caseId       String?
+  clueId       String?
+
+  // 文书基本信息
+  docType      String   // support_letter, inquiry_record, evidence_list, service_receipt, case_report, other
+  title        String
+  content      String   // 文书正文(富文本)
+  templateId   String?  // 使用的模板ID
+
+  // 状态
+  status       String   @default("draft") // draft, submitted, approved_level1, approved_level2, approved, rejected, archived
+  version      Int      @default(1)
+  currentLevel Int      @default(0) // 当前审批层级
+
+  // 签章
+  signatureUrl String?  // 电子签章URL
+  signedAt     DateTime?
+  signedBy     String?
+
+  // 归档
+  archivedAt   DateTime?
+  archivedBy   String?
+  archivePath  String?  // 归档路径
+
+  // 元数据
+  wordCount    Int?
+  createdById  String  // 创建人ID
+  createdByName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  case         Case?    @relation(fields: [caseId], references: [id])
+  approvals    DocApproval[]
+  versions     DocumentVersion[]
+  template     DocumentTemplate? @relation(fields: [templateId], references: [id])
+  creator      User?    @relation("CreatedDocuments", fields: [createdById], references: [id])
+
+  @@index([caseId])
+  @@index([docType])
+  @@index([status])
+  @@map("document")
+}
+
+model DocumentVersion {
+  id           String   @id @default(cuid())
+  documentId   String
+  version      Int
+  content      String
+  changeDesc   String?
+  createdBy    String
+  createdByName String?
+  createdAt    DateTime @default(now())
+
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
+  @@map("document_version")
+}
+
+model DocumentTemplate {
+  id          String   @id @default(cuid())
+  name        String   // 模板名称
+  code        String   @unique // 模板编码
+  docType     String   // 文书类型
+  category    String   // 受理前文书, 调查取证文书, 支持起诉核心文书, 送达文书, 结案归档文书
+  content     String   // 模板内容(含占位符)
+  variables   Json?    // 模板变量列表
+  version     Int      @default(1)
+  status      String   @default("active") // active, inactive
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  documents   Document[]
+
+  @@map("document_template")
+}
+
+model DocApproval {
+  id           String   @id @default(cuid())
+  documentId   String
+  level        Int      // 1=部门负责人, 2=分管副检察长, 3=检察长/检委会
+  approverId   String
+  approverName String
+  status       String   @default("pending") // pending, approved, rejected, returned
+  opinion      String?
+  actionAt     DateTime?
+  signatureUrl String?  // 审批签章
+  sequence     Int      @default(1) // 审批顺序
+
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  approver     User     @relation(fields: [approverId], references: [id])
+
+  @@index([documentId])
+  @@map("doc_approval")
+}
+
+// ============================================================
+// 类案批量管理
+// ============================================================
+
+model CaseAggregate {
+  id              String   @id @default(cuid())
+  aggregateNo     String   @unique // 合集编号: BA-YYYYMMDD-XXXX
+  name            String   // 合集名称（如同工地批量欠薪）
+  description     String?
+
+  // 聚合维度
+  aggregateType   String   // same_project, same_subject, same_contractor, same_area
+  criteria        Json?    // 聚合条件详情
+
+  // 汇总数据
+  totalAmount     Decimal? @db.Decimal(15, 2)
+  totalPersonCount Int?
+  clueCount       Int      @default(0)
+  caseCount       Int      @default(0)
+
+  // 关联线索
+  aggregateClues  AggregateClue[]
+
+  // 状态
+  status          String   @default("active") // active, closed
+  createdBy       String
+  createdByName   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  closedAt        DateTime?
+
+  @@map("case_aggregate")
+}
+
+model AggregateClue {
+  id             String   @id @default(cuid())
+  aggregateId    String
+  clueId         String
+  similarityScore Decimal? @db.Decimal(5, 4) // 与合集的平均相似度
+  isRepresentative Boolean @default(false) // 是否为代表性线索
+  addedBy        String?
+  addedAt        DateTime @default(now())
+
+  aggregate      CaseAggregate @relation(fields: [aggregateId], references: [id], onDelete: Cascade)
+  clue           Clue          @relation(fields: [clueId], references: [id], onDelete: Cascade, map: "aggregate_clue_clue_fk")
+
+  @@unique([aggregateId, clueId])
+  @@index([aggregateId])
+  @@map("aggregate_clue")
+}
+
+// ============================================================
+// 统计分析
+// ============================================================
+
+model DailyStatistics {
+  id           String   @id @default(cuid())
+  statDate     DateTime @db.Date
+  orgId        String?
+
+  // 线索统计
+  clueTotal    Int      @default(0)
+  clueNew      Int      @default(0)
+  cluePending  Int      @default(0)
+  clueProcessed Int     @default(0)
+  clueRejected Int      @default(0)
+
+  // 案件统计
+  caseTotal    Int      @default(0)
+  caseNew      Int      @default(0)
+  caseAccepted Int      @default(0)
+  caseClosed   Int      @default(0)
+
+  // 金额统计
+  totalAmount  Decimal? @db.Decimal(20, 2)
+  totalPersonCount Int?
+
+  // 文书统计
+  docTotal     Int      @default(0)
+  docApproved  Int      @default(0)
+
+  createdAt    DateTime @default(now())
+
+  @@unique([statDate, orgId])
+  @@map("daily_statistics")
+}
+
+// ============================================================
+// 消息通知与待办
+// ============================================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // task, approval, reminder, system
+  title     String
+  content   String
+  link      String?  // 点击跳转链接
+  read      Boolean  @default(false)
+  priority  String   @default("normal") // urgent, high, normal
+  sentAt    DateTime @default(now())
+  readAt    DateTime?
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, read])
+  @@map("notification")
+}
+
+model Task {
+  id           String   @id @default(cuid())
+  type         String   // clue_review, evidence_review, document_approval, supervision
+  title        String
+  description  String?
+  bizId        String   // 关联业务ID（线索ID/案件ID/文书ID）
+  bizType      String   // clue, case, document
+
+  assigneeId   String
+  assigneeName String?
+  assignerId   String?
+  assignerName String?
+
+  status       String   @default("pending") // pending, in_progress, completed, cancelled
+  priority     String   @default("normal") // urgent, high, normal, low
+  dueDate      DateTime?
+  completedAt  DateTime?
+  opinion      String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignee     User?    @relation(fields: [assigneeId], references: [id])
+  clue         Clue?    @relation(fields: [bizId], references: [id], onDelete: Cascade, map: "task_clue_fk")
+  case         Case?    @relation(fields: [bizId], references: [id], onDelete: Cascade, map: "task_case_fk")
+
+  @@index([assigneeId, status])
+  @@index([bizId])
+  @@map("task")
+}
