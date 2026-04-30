@@ -247,7 +247,9 @@ export class ClueService {
 
   async getHeatmapData() {
     const clues = await this.prisma.clue.findMany({
-      where: { projectAddressStd: { not: Prisma.DbNull } },
+      where: {
+        projectAddressStd: { not: Prisma.JsonNull },
+      },
       select: { projectAddressStd: true, amount: true, personCount: true, riskLevel: true },
     });
 

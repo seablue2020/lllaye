@@ -1,67 +1,52 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { RedisService } from '../../common/redis/redis.service';
-import { Prisma } from '@prisma/client';
 import * as dayjs from 'dayjs';
 
 @Injectable()
 export class DashboardService {
-  private readonly logger = new Logger(DashboardService.name);
-
-  constructor(
-    private prisma: PrismaService,
-    private redis: RedisService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async getMetrics() {
-    const today = dayjs().startOf('day').toDate();
+    const todayStart = dayjs().startOf('day').toDate();
     const todayEnd = dayjs().endOf('day').toDate();
+    const monthStart = dayjs().startOf('month').toDate();
 
     const [
       pendingClues,
       keyClues,
-      processingCases,
+      caseTotal,
       closedCases,
       todayClues,
       overdueClues,
+      newCasesThisMonth,
+      totalDecided,
+      accepted,
     ] = await Promise.all([
       this.prisma.clue.count({ where: { status: 'pending_review' } }),
-      this.prisma.clue.count({ where: { status: 'under_review', isKey: true } }),
-      this.prisma.case.count({ where: { status: { in: ['under_review', 'investigating', 'document_review'] } } }),
+      this.prisma.clue.count({ where: { isKey: true, status: { notIn: ['closed', 'rejected'] } } }),
+      this.prisma.case.count(),
       this.prisma.case.count({ where: { status: 'closed' } }),
-      this.prisma.clue.count({ where: { createdAt: { gte: today, lt: todayEnd } } }),
+      this.prisma.clue.count({ where: { createdAt: { gte: todayStart, lt: todayEnd } } }),
       this.prisma.clue.count({
         where: {
           status: 'pending_review',
           createdAt: { lt: dayjs().subtract(3, 'day').toDate() },
         },
       }),
+      this.prisma.case.count({ where: { filedAt: { gte: monthStart } } }),
+      this.prisma.case.count({ where: { reviewConclusion: { in: ['accepted', 'rejected'] } } }),
+      this.prisma.case.count({ where: { reviewConclusion: 'accepted' } }),
     ]);
-
-    // 计算采纳率
-    const totalDecided = await this.prisma.case.count({
-      where: { reviewConclusion: { in: ['accepted', 'rejected'] } },
-    });
-    const accepted = await this.prisma.case.count({
-      where: { reviewConclusion: 'accepted' },
-    });
-    const adoptionRate = totalDecided > 0 ? Math.round((accepted / totalDecided) * 100) : 0;
-
-    // 本月新受理
-    const monthStart = dayjs().startOf('month').toDate();
-    const newCasesThisMonth = await this.prisma.case.count({
-      where: { filedAt: { gte: monthStart } },
-    });
 
     return {
       pendingClues,
       pendingCluesNew: todayClues,
       keyClues,
       keyCluesOverdue: overdueClues,
-      processingCases,
+      processingCases: caseTotal,
       processingCasesNew: newCasesThisMonth,
       closedCases,
-      adoptionRate,
+      adoptionRate: totalDecided > 0 ? Math.round((accepted / totalDecided) * 100) : 0,
     };
   }
 
@@ -85,6 +70,7 @@ export class DashboardService {
         bizId: true,
         bizType: true,
         priority: true,
+        status: true,
         dueDate: true,
         createdAt: true,
       },
@@ -92,23 +78,9 @@ export class DashboardService {
 
     return tasks.map((task) => ({
       ...task,
-      priorityLabel:
-        task.priority === 'urgent'
-          ? '紧急'
-          : task.priority === 'high'
-          ? '高'
-          : task.priority === 'low'
-          ? '低'
-          : '普通',
-      typeLabel:
-        task.type === 'clue_review'
-          ? '待研判'
-          : task.type === 'evidence_review'
-          ? '待取证'
-          : task.type === 'document_approval'
-          ? '待文书审核'
-          : '其他',
-      isOverdue: task.dueDate && dayjs(task.dueDate).isBefore(dayjs()),
+      priorityLabel: this.getPriorityLabel(task.priority),
+      typeLabel: this.getTaskTypeLabel(task.type),
+      isOverdue: Boolean(task.dueDate && dayjs(task.dueDate).isBefore(dayjs())),
     }));
   }
 
@@ -134,9 +106,10 @@ export class DashboardService {
       },
     });
 
-    return warnings.map((w) => ({
-      ...w,
-      riskReasonList: w.riskReason?.split(';').filter(Boolean) || [],
+    return warnings.map((item) => ({
+      ...item,
+      amount: Number(item.amount || 0),
+      riskReasonList: item.riskReason?.split(';').map((reason) => reason.trim()).filter(Boolean) || [],
     }));
   }
 
@@ -160,13 +133,33 @@ export class DashboardService {
       },
     });
 
-    return clues.map((c) => ({
-      ...c,
+    return clues.map((item) => ({
+      ...item,
       tags: [
-        c.riskLevel === 'high' ? '高风险' : null,
-        c.isAggregated ? '聚合线索' : null,
-        c.claimType === 'support_prosecution' ? '支持起诉' : null,
+        item.riskLevel === 'high' ? '高风险' : null,
+        item.isAggregated ? '联合线索' : null,
+        item.claimType === 'support_prosecution' ? '支持起诉' : null,
       ].filter(Boolean),
     }));
+  }
+
+  private getPriorityLabel(priority: string) {
+    const labels: Record<string, string> = {
+      urgent: '紧急',
+      high: '高',
+      normal: '普通',
+      low: '低',
+    };
+    return labels[priority] || priority;
+  }
+
+  private getTaskTypeLabel(type: string) {
+    const labels: Record<string, string> = {
+      clue_review: '线索研判',
+      evidence_review: '证据审查',
+      document_approval: '文书审核',
+      supervision: '督办',
+    };
+    return labels[type] || '其他';
   }
 }

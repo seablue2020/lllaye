@@ -7,7 +7,6 @@ import {
   Param,
   Query,
   UseGuards,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ClueService } from './clue.service';
@@ -42,26 +41,26 @@ export class ClueController {
 
   @Get('duplicates/:id')
   @ApiOperation({ summary: '重复诉求查询' })
-  findDuplicates(@Param('id', ParseUUIDPipe) id: string) {
+  findDuplicates(@Param('id') id: string) {
     return this.clueService.findDuplicates(id);
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: '线索详情' })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.clueService.findOne(id);
   }
 
   @Get(':id/timeline')
   @ApiOperation({ summary: '线索流程时间轴' })
-  getTimeline(@Param('id', ParseUUIDPipe) id: string) {
+  getTimeline(@Param('id') id: string) {
     return this.clueService.getTimeline(id);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: '线索详情' })
+  findOne(@Param('id') id: string) {
+    return this.clueService.findOne(id);
   }
 
   @Put(':id/triage')
   @ApiOperation({ summary: '线索分流处理' })
   triage(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: ClueTriageDto,
     @CurrentUser('sub') userId: string,
     @CurrentUser('realName') realName: string,

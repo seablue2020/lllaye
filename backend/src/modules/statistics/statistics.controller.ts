@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { StatisticsService } from './statistics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -12,19 +12,19 @@ export class StatisticsController {
 
   @Get('overview')
   @ApiOperation({ summary: '综合统计报表' })
-  getOverview(query: { startDate?: string; endDate?: string; orgId?: string }) {
+  getOverview(@Query() query: { startDate?: string; endDate?: string; orgId?: string }) {
     return this.statisticsService.getOverview(query);
   }
 
   @Get('region')
   @ApiOperation({ summary: '区域分布分析' })
-  getRegionAnalysis(query: { startDate?: string; endDate?: string }) {
+  getRegionAnalysis(@Query() query: { startDate?: string; endDate?: string }) {
     return this.statisticsService.getRegionAnalysis(query);
   }
 
   @Get('quality')
   @ApiOperation({ summary: '办案质效分析' })
-  getQualityAnalysis(query: { startDate?: string; endDate?: string }) {
+  getQualityAnalysis(@Query() query: { startDate?: string; endDate?: string }) {
     return this.statisticsService.getQualityAnalysis(query);
   }
 

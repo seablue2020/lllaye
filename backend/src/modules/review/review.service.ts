@@ -12,26 +12,79 @@ export class ReviewService {
     private encryption: EncryptionService,
   ) {}
 
-  async startReview(clueId: string) {
-    const clue = await this.prisma.clue.findUnique({ where: { id: clueId } });
-    if (!clue) throw new NotFoundException('线索不存在');
+  async startReview(caseIdOrClueId: string) {
+    const resolvedCaseId = await this._resolveCaseId(caseIdOrClueId);
+    if (!resolvedCaseId) {
+      // If no case exists yet, use clue data directly
+      const clue = await this.prisma.clue.findUnique({ where: { id: caseIdOrClueId } });
+      if (!clue) throw new NotFoundException('案件或线索不存在');
+
+      const aiReview = await this.aiService.reviewCase({
+        applicantName: clue.applicantName,
+        applicantIdNo: clue.applicantIdNoMasked || '',
+        claimType: clue.claimType,
+        claimOriginal: clue.claimOriginal,
+        amount: Number(clue.amount || 0),
+        personCount: clue.personCount,
+        evidenceTypes: [],
+        filedAt: clue.createdAt.toISOString(),
+        projectName: clue.projectName,
+        respondentName: clue.subjectName,
+        subjectName: clue.subjectName,
+        subjectType: clue.subjectType,
+        claimSource: clue.source,
+      });
+
+      await this.prisma.clue.update({
+        where: { id: clue.id },
+        data: {
+          reviewedAt: new Date(),
+          riskLevel: aiReview.riskLevel,
+          riskReason: aiReview.riskReasons.join('; '),
+        },
+      });
+
+      return {
+        conclusion: aiReview.conclusion,
+        conclusionText: aiReview.conclusionText,
+        dimensions: aiReview.dimensions,
+        riskLevel: aiReview.riskLevel,
+        riskReasons: aiReview.riskReasons,
+        missingEvidence: aiReview.missingEvidence,
+        legalReferences: aiReview.legalReferences,
+      };
+    }
+
+    const caseEntity = await this.prisma.case.findUnique({ where: { id: resolvedCaseId } });
+    if (!caseEntity) throw new NotFoundException('案件不存在');
+
+    const clueId = caseEntity.clueId;
+    const clue = clueId ? await this.prisma.clue.findUnique({ where: { id: clueId } }) : null;
 
     const aiReview = await this.aiService.reviewCase({
-      applicantName: clue.applicantName,
-      applicantIdNo: clue.applicantIdNoMasked || '',
-      claimType: clue.claimType,
-      claimOriginal: clue.claimOriginal,
-      amount: Number(clue.amount || 0),
-      personCount: clue.personCount,
+      applicantName: caseEntity.applicantName,
+      applicantIdNo: clue?.applicantIdNoMasked || caseEntity.applicantIdNo || '',
+      claimType: clue?.claimType || caseEntity.caseType || '劳动报酬纠纷',
+      claimOriginal: clue?.claimOriginal || caseEntity.description || '',
+      amount: Number(caseEntity.amount || 0),
+      personCount: caseEntity.personCount,
       evidenceTypes: [],
-      filedAt: clue.createdAt.toISOString(),
+      filedAt: clue?.createdAt?.toISOString() || caseEntity.createdAt.toISOString(),
+      projectName: clue?.projectName || undefined,
+      respondentName: caseEntity.respondentName,
+      respondentOrg: caseEntity.respondentOrg || undefined,
+      subjectName: clue?.subjectName || undefined,
+      subjectType: clue?.subjectType || undefined,
+      claimSource: clue?.source || undefined,
     });
+
+    await this.prisma.reviewResult.deleteMany({ where: { caseId: resolvedCaseId } });
 
     await Promise.all(
       aiReview.dimensions.map((dim) =>
         this.prisma.reviewResult.create({
           data: {
-            caseId: clue.id,
+            caseId: resolvedCaseId,
             dimension: dim.dimension,
             result: dim.result,
             reason: dim.reason,
@@ -42,14 +95,38 @@ export class ReviewService {
       ),
     );
 
-    await this.prisma.clue.update({
-      where: { id: clueId },
+    await this.prisma.case.update({
+      where: { id: resolvedCaseId },
       data: {
-        reviewedAt: new Date(),
-        riskLevel: aiReview.riskLevel,
-        riskReason: aiReview.riskReasons.join('; '),
+        aiReviewResult: {
+          conclusion: aiReview.conclusion,
+          conclusionText: aiReview.conclusionText,
+          riskLevel: aiReview.riskLevel,
+          riskReasons: aiReview.riskReasons,
+          missingEvidence: aiReview.missingEvidence,
+          legalReferences: aiReview.legalReferences,
+          dimensions: aiReview.dimensions.map((d) => ({
+            dimension: d.dimension,
+            result: d.result,
+            reason: d.reason,
+            confidence: d.confidence,
+            suggestions: d.suggestions,
+          })),
+          reviewedAt: new Date().toISOString(),
+        } as any,
       },
     });
+
+    if (clue) {
+      await this.prisma.clue.update({
+        where: { id: clue.id },
+        data: {
+          reviewedAt: new Date(),
+          riskLevel: aiReview.riskLevel,
+          riskReason: aiReview.riskReasons.join('; '),
+        },
+      });
+    }
 
     return {
       conclusion: aiReview.conclusion,
@@ -62,19 +139,21 @@ export class ReviewService {
     };
   }
 
-  async getReviewResults(caseId: string) {
+  async getReviewResults(caseIdOrClueId: string) {
+    const caseId = await this._resolveCaseId(caseIdOrClueId);
+    if (!caseId) return { all: [], confirmed: [], pending: [], confirmedCount: 0, totalCount: 0 };
     const results = await this.prisma.reviewResult.findMany({
       where: { caseId },
       orderBy: { createdAt: 'asc' },
     });
-
     const confirmed = results.filter((r) => r.confirmed);
     const pending = results.filter((r) => !r.confirmed);
-
     return { all: results, confirmed, pending, confirmedCount: confirmed.length, totalCount: results.length };
   }
 
-  async confirmReview(caseId: string, confirmedBy: string, dimension?: string) {
+  async confirmReview(caseIdOrClueId: string, confirmedBy: string, dimension?: string) {
+    const caseId = await this._resolveCaseId(caseIdOrClueId);
+    if (!caseId) throw new NotFoundException('案件不存在');
     const where: Prisma.ReviewResultWhereInput = { caseId };
     if (dimension) where.dimension = dimension;
 
@@ -87,13 +166,10 @@ export class ReviewService {
       const hasWarning = results.some((r) => r.result === 'warning');
       const conclusion = hasFail ? 'rejected' : hasWarning ? 'need_more_evidence' : 'accepted';
 
-      const existingCase = await this.prisma.case.findFirst({ where: { clueId: caseId } });
-      if (existingCase) {
-        await this.prisma.case.updateMany({
-          where: { id: existingCase.id },
-          data: { reviewConclusion: conclusion, status: 'under_review' },
-        });
-      }
+      await this.prisma.case.update({
+        where: { id: caseId },
+        data: { reviewConclusion: conclusion, status: 'under_review' },
+      });
     }
 
     return { message: '审查意见已确认' };
@@ -111,7 +187,9 @@ export class ReviewService {
     return { message: '审查意见已驳回，请重新分析' };
   }
 
-  async generateReport(caseId: string) {
+  async generateReport(caseIdOrClueId: string) {
+    const caseId = await this._resolveCaseId(caseIdOrClueId);
+    if (!caseId) throw new NotFoundException('案件不存在');
     const caseEntity = await this.prisma.case.findUnique({ where: { id: caseId } });
     if (!caseEntity) throw new NotFoundException('案件不存在');
 
@@ -134,9 +212,11 @@ export class ReviewService {
     return { report };
   }
 
-  async getGuidance(caseId: string) {
+  async getGuidance(caseIdOrClueId: string) {
+    const caseId = await this._resolveCaseId(caseIdOrClueId);
+    if (!caseId) return { title: '案件办理履职提示', guidance: {} };
     const caseEntity = await this.prisma.case.findUnique({ where: { id: caseId } });
-    if (!caseEntity) throw new NotFoundException('案件不存在');
+    if (!caseEntity) return { title: '案件办理履职提示', guidance: {} };
 
     const reviewResults = await this.prisma.reviewResult.findMany({ where: { caseId } });
     const warnings = reviewResults.filter((r) => r.result !== 'pass');
@@ -174,5 +254,13 @@ export class ReviewService {
     });
 
     return result;
+  }
+
+  private async _resolveCaseId(id: string): Promise<string | null> {
+    const byCase = await this.prisma.case.findUnique({ where: { id } });
+    if (byCase) return byCase.id;
+    const byClue = await this.prisma.case.findFirst({ where: { clueId: id } });
+    if (byClue) return byClue.id;
+    return null;
   }
 }

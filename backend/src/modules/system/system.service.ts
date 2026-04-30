@@ -10,8 +10,9 @@ export class SystemService {
     private encryption: EncryptionService,
   ) {}
 
-  async getUsers(query: { page?: number; pageSize?: number; keyword?: string; roleId?: string }) {
-    const { page = 1, pageSize = 20 } = query;
+  async getUsers(query: { page?: number | string; pageSize?: number | string; keyword?: string; roleId?: string }) {
+    const page = Number(query.page) || 1;
+    const pageSize = Number(query.pageSize) || 20;
     const skip = (page - 1) * pageSize;
 
     const where: Prisma.UserWhereInput = { status: { not: 'deleted' } };
@@ -108,8 +109,9 @@ export class SystemService {
     return this.prisma.dictionary.update({ where: { id }, data: dto });
   }
 
-  async getAuditLogs(query: { page?: number; pageSize?: number; userId?: string; module?: string; startDate?: string; endDate?: string }) {
-    const { page = 1, pageSize = 20 } = query;
+  async getAuditLogs(query: { page?: number | string; pageSize?: number | string; userId?: string; module?: string; startDate?: string; endDate?: string }) {
+    const page = Number(query.page) || 1;
+    const pageSize = Number(query.pageSize) || 20;
     const skip = (page - 1) * pageSize;
 
     const where: Prisma.AuditLogWhereInput = {};

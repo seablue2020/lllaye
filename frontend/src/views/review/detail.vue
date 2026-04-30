@@ -3,14 +3,18 @@
     <div class="page-header">
       <div>
         <el-button text @click="router.push('/review')"><el-icon><ArrowLeft /></el-icon>返回</el-button>
-        <span class="page-title">{{ reviewInfo?.conclusionText || 'AI辅助审查' }}</span>
-        <el-tag :type="getConclusionType(reviewInfo?.conclusion)">
+        <span class="page-title">{{ caseInfo?.title || 'AI辅助审查' }}</span>
+        <el-tag v-if="caseInfo" size="small">{{ caseInfo.caseNo }}</el-tag>
+        <el-tag :type="getConclusionType(reviewInfo?.conclusion)" v-if="reviewInfo">
           {{ getConclusionLabel(reviewInfo?.conclusion) }}
         </el-tag>
       </div>
       <div class="btn-group">
         <el-button @click="handleGenerateReport">生成分析报告</el-button>
-        <el-button type="primary" :disabled="!canConfirm" @click="handleConfirm">确认审查意见</el-button>
+        <el-button type="primary" @click="handleStartReview" :loading="reviewing">
+          {{ reviewInfo ? '重新审查' : '启动AI审查' }}
+        </el-button>
+        <el-button type="success" :disabled="!canConfirm" @click="handleConfirm">确认审查意见</el-button>
       </div>
     </div>
 
@@ -62,8 +66,7 @@
           </div>
         </div>
         <div v-else class="empty-state">
-          <p>暂无审查结果</p>
-          <el-button type="primary" @click="handleStartReview">启动AI审查</el-button>
+          <p>暂无审查结果，请点击「启动AI审查」按钮开始审查</p>
         </div>
       </el-tab-pane>
 
@@ -125,7 +128,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { reviewApi } from '@/api'
+import { reviewApi, caseApi } from '@/api'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Warning, WarningFilled, Document, ChatDotRound, Connection } from '@element-plus/icons-vue'
 
@@ -133,7 +136,9 @@ const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
+const reviewing = ref(false)
 const activeTab = ref('review')
+const caseInfo = ref<any>(null)
 const reviewInfo = ref<any>(null)
 const report = ref('')
 const guidance = ref<any>(null)
@@ -167,15 +172,33 @@ function getResultLabel(result: string) {
 }
 
 async function loadData() {
-  const id = route.params.caseId as string
+  const caseId = route.params.caseId as string
   loading.value = true
   try {
-    const [reviewRes, guidanceRes] = await Promise.all([
-      reviewApi.start(id).catch(() => null),
-      reviewApi.getGuidance(id).catch(() => null),
+    const [caseRes, resultsRes, guidanceRes] = await Promise.all([
+      caseApi.getById(caseId).catch(() => null),
+      reviewApi.getResults(caseId).catch(() => null),
+      reviewApi.getGuidance(caseId).catch(() => null),
     ])
-    reviewInfo.value = reviewRes
+    caseInfo.value = caseRes
     guidance.value = guidanceRes
+    if (resultsRes?.all?.length) {
+      const first = resultsRes.all[0]
+      reviewInfo.value = {
+        conclusion: first.result === 'fail' ? 'reject' : 'warning' ? 'need_more_evidence' : 'accept',
+        conclusionText: first.result === 'fail' ? '审查不通过' : '待确认',
+        dimensions: resultsRes.all.map((r: any) => ({
+          dimension: r.dimension,
+          result: r.result,
+          reason: r.reason,
+          confidence: r.confidence,
+          suggestions: r.suggestions,
+        })),
+        missingEvidence: [],
+        legalReferences: [],
+        riskReasons: [],
+      }
+    }
   } catch (e) {
     console.error(e)
   } finally {
@@ -184,7 +207,17 @@ async function loadData() {
 }
 
 async function handleStartReview() {
-  await loadData()
+  const caseId = route.params.caseId as string
+  reviewing.value = true
+  try {
+    const res = await reviewApi.start(caseId)
+    reviewInfo.value = res
+    ElMessage.success('AI审查完成')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '审查失败')
+  } finally {
+    reviewing.value = false
+  }
 }
 
 async function handleConfirm() {

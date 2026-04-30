@@ -14,6 +14,8 @@ import { RedisModule } from './common/redis/redis.module';
 import { BullModule } from './common/bull/bull.module';
 import { EncryptionModule } from './common/encryption/encryption.module';
 import { AiModule } from './modules/ai/ai.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { CaseModule } from './modules/case/case.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { AiModule } from './modules/ai/ai.module';
     StatisticsModule,
     SystemModule,
     AiModule,
+    DashboardModule,
+    CaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -4,7 +4,7 @@
     <div class="page-header-full">
       <div class="header-left">
         <h2 class="system-title">欠薪支持起诉智能办案平台（检察端）</h2>
-        <span class="org-name">{{ userStore.orgName || '区人民检察院' }}</span>
+        <span class="org-name">{{ userStore.orgName || '北京西城区人民检察院' }}</span>
       </div>
       <div class="header-right">
         <span class="user-name">{{ userStore.userName }}</span>
@@ -329,6 +329,10 @@ onMounted(async () => {
 
 .task-badge {
   cursor: pointer;
+}
+
+.task-badge :deep(.el-button span) {
+  color: rgba(255, 255, 255, 1);
 }
 
 /* 指标网格 */

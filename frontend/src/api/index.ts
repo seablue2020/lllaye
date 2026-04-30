@@ -128,6 +128,14 @@ export const clueApi = {
     }>(`/clues/${id}/timeline`),
 }
 
+// 案件管理
+export const caseApi = {
+  list: (params?: any) =>
+    request.get<{ list: any[]; total: number; page: number; pageSize: number }>('/case/list', params),
+  getById: (id: string) => request.get<any>(`/case/${id}`),
+  create: (data: any) => request.post<any>('/case', data),
+}
+
 // AI 审查
 export const reviewApi = {
   start: (clueId: string) => request.post(`/reviews/${clueId}/start`),

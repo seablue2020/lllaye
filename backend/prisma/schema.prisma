@@ -268,7 +268,6 @@ model Case {
   // 关联
   documents        Document[]
   reviewResults    ReviewResult[]
-  tasks            Task[]
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -592,7 +591,6 @@ model Task {
 
   assignee     User?    @relation(fields: [assigneeId], references: [id])
   clue         Clue?    @relation(fields: [bizId], references: [id], onDelete: Cascade, map: "task_clue_fk")
-  case         Case?    @relation(fields: [bizId], references: [id], onDelete: Cascade, map: "task_case_fk")
 
   @@index([assigneeId, status])
   @@index([bizId])
