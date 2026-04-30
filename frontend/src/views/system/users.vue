@@ -6,14 +6,14 @@
     </div>
 
     <el-table :data="users" v-loading="loading" stripe>
-      <el-table-column prop="username" label="用户名" width="120" />
-      <el-table-column prop="realName" label="姓名" width="100" />
-      <el-table-column prop="role" label="角色" width="100">
+      <el-table-column prop="username" label="用户名" width="140" />
+      <el-table-column prop="realName" label="姓名" width="120" />
+      <el-table-column prop="role" label="角色" width="140">
         <template #default="{ row }">{{ row.role?.name }}</template>
       </el-table-column>
       <el-table-column prop="phone" label="电话" width="130" />
-      <el-table-column prop="email" label="邮箱" width="180" />
-      <el-table-column prop="org" label="机构" width="150">
+      <el-table-column prop="email" label="邮箱" min-width="180" />
+      <el-table-column prop="org" label="机构" min-width="180">
         <template #default="{ row }">{{ row.org?.name || '—' }}</template>
       </el-table-column>
       <el-table-column prop="status" label="状态" width="80">

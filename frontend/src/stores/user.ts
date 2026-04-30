@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { authApi } from '@/api'
-import type { RouteRecordRaw } from 'vue-router'
 
 interface UserInfo {
   id: string
@@ -71,7 +70,7 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    hasPermission(code: string): boolean {
+    hasPermission(_code: string): boolean {
       if (!this.userInfo) return false
       if (this.roleCode === 'admin') return true
       // 其他权限检查逻辑

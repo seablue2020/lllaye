@@ -10,29 +10,30 @@
     </div>
 
     <el-table :data="cases" v-loading="loading" stripe @row-click="handleRowClick" row-class-name="clickable-row">
-      <el-table-column prop="caseNo" label="案件编号" width="160" />
-      <el-table-column prop="title" label="案件标题" min-width="200" />
-      <el-table-column prop="applicantName" label="申请人" width="100" />
-      <el-table-column prop="respondentName" label="被申请人" width="120" />
-      <el-table-column label="涉案金额" width="120" align="right">
-        <template #default="{ row }">¥{{ Number(row.amount || 0).toLocaleString() }}</template>
+      <el-table-column prop="caseNo" label="案件编号" width="170" />
+      <el-table-column prop="title" label="案件标题" min-width="220" />
+      <el-table-column prop="applicantName" label="申请人" width="110" />
+      <el-table-column prop="respondentName" label="被申请人" width="160" />
+      <el-table-column label="涉案金额" width="130" align="right">
+        <template #default="{ row }">{{ Number(row.amount || 0).toLocaleString() }}元</template>
       </el-table-column>
-      <el-table-column prop="personCount" label="人数" width="70" align="center" />
-      <el-table-column prop="status" label="状态" width="100">
+      <el-table-column prop="personCount" label="人数" width="80" align="center" />
+      <el-table-column prop="status" label="状态" width="110">
         <template #default="{ row }">
           <el-tag size="small" :type="getStatusTag(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="审查状态" width="120">
+      <el-table-column label="审查结论" width="130">
         <template #default="{ row }">
-          <el-tag v-if="row.reviewConclusion === 'accepted'" type="success" size="small">已受理</el-tag>
+          <el-tag v-if="row.reviewConclusion === 'accepted'" type="success" size="small">已采纳</el-tag>
           <el-tag v-else-if="row.reviewConclusion === 'rejected'" type="danger" size="small">不予受理</el-tag>
+          <el-tag v-else-if="row.reviewConclusion === 'need_more_evidence'" type="warning" size="small">补充材料</el-tag>
           <el-tag v-else type="info" size="small">待审查</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="AI审查" width="100" align="center">
+      <el-table-column label="AI审查" width="110" align="center">
         <template #default="{ row }">
-          <el-tag v-if="row.reviewedAt || row.aiReviewResult" type="success" size="small">已完成</el-tag>
+          <el-tag v-if="row.aiReviewResult" type="success" size="small">已完成</el-tag>
           <el-tag v-else type="warning" size="small">待审查</el-tag>
         </template>
       </el-table-column>
@@ -43,7 +44,17 @@
       </el-table-column>
     </el-table>
 
-    <!-- 新建案件对话框 -->
+    <div class="pagination-row">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        layout="total, sizes, prev, pager, next"
+        @size-change="loadData"
+        @current-change="loadData"
+      />
+    </div>
+
     <el-dialog v-model="showCreateDialog" title="新建案件" width="580px" destroy-on-close>
       <el-form :model="createForm" label-width="100px">
         <el-form-item label="申请人" required>
@@ -58,17 +69,17 @@
         <el-form-item label="被申请人" required>
           <el-input v-model="createForm.respondentName" placeholder="请输入被申请人名称" />
         </el-form-item>
-        <el-form-item label="被申请人单位">
-          <el-input v-model="createForm.respondentOrg" placeholder="请输入被申请人单位（选填）" />
+        <el-form-item label="被申请单位">
+          <el-input v-model="createForm.respondentOrg" placeholder="请输入被申请单位（选填）" />
         </el-form-item>
-        <el-form-item label="联系电话">
+        <el-form-item label="联系方式">
           <el-input v-model="createForm.respondentContact" placeholder="被申请人联系方式（选填）" />
         </el-form-item>
         <el-form-item label="涉案金额">
-          <el-input-number v-model="createForm.amount" :min="0" :precision="2" placeholder="请输入涉案金额" style="width: 100%" />
+          <el-input-number v-model="createForm.amount" :min="0" :precision="2" style="width: 100%" />
         </el-form-item>
         <el-form-item label="涉及人数">
-          <el-input-number v-model="createForm.personCount" :min="1" :max="99999" placeholder="请输入涉及人数" style="width: 100%" />
+          <el-input-number v-model="createForm.personCount" :min="1" :max="99999" style="width: 100%" />
         </el-form-item>
         <el-form-item label="案件标题">
           <el-input v-model="createForm.title" placeholder="不填则自动生成" />
@@ -86,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
@@ -97,8 +108,11 @@ const loading = ref(false)
 const creating = ref(false)
 const showCreateDialog = ref(false)
 const cases = ref<any[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(10)
 
-const createForm = ref({
+const emptyForm = {
   applicantName: '',
   applicantIdNo: '',
   applicantPhone: '',
@@ -109,14 +123,24 @@ const createForm = ref({
   personCount: 1,
   title: '',
   description: '',
-})
-
-const statusMap: Record<string, string> = {
-  pending: '待处理', under_review: '审查中', investigating: '调查中',
-  document_review: '文书审核', approved: '已审批', closed: '已办结', rejected: '不予受理',
 }
 
-function getStatusLabel(status: string) { return statusMap[status] || status }
+const createForm = ref({ ...emptyForm })
+
+const statusMap: Record<string, string> = {
+  pending: '待处理',
+  under_review: '审查中',
+  investigating: '调查中',
+  document_review: '文书审核',
+  approved: '已审批',
+  closed: '已办结',
+  rejected: '不予受理',
+}
+
+function getStatusLabel(status: string) {
+  return statusMap[status] || status
+}
+
 function getStatusTag(status: string) {
   if (status === 'under_review') return 'primary'
   if (status === 'closed') return 'success'
@@ -131,9 +155,11 @@ function handleRowClick(row: any) {
 async function loadData() {
   loading.value = true
   try {
-    const res: any = await caseApi.list()
+    const res = await caseApi.list({ page: page.value, pageSize: pageSize.value })
     cases.value = res.list || []
-  } catch (e) {
+    total.value = res.total || 0
+  } catch (error) {
+    console.error(error)
     ElMessage.error('加载失败')
   } finally {
     loading.value = false
@@ -147,30 +173,48 @@ async function handleCreate() {
   }
   creating.value = true
   try {
-    const created: any = await caseApi.create(createForm.value)
+    const created = await caseApi.create(createForm.value)
     ElMessage.success('案件创建成功')
     showCreateDialog.value = false
-    createForm.value = { applicantName: '', applicantIdNo: '', applicantPhone: '', respondentName: '', respondentOrg: '', respondentContact: '', amount: 0, personCount: 1, title: '', description: '' }
+    createForm.value = { ...emptyForm }
     await loadData()
     router.push(`/review/${created.id}`)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '创建失败')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '创建失败')
   } finally {
     creating.value = false
   }
 }
 
-onMounted(() => { loadData() })
+onMounted(() => {
+  loadData()
+})
 </script>
 
 <style scoped>
-.review-page { background: var(--color-bg-page); }
+.review-page {
+  background: var(--color-bg-page);
+}
+
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
 }
-.header-actions { display: flex; gap: 8px; }
-:deep(.clickable-row) { cursor: pointer; }
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pagination-row {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 16px;
+}
+
+:deep(.clickable-row) {
+  cursor: pointer;
+}
 </style>

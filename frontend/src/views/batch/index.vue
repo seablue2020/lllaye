@@ -52,9 +52,9 @@ const typeMap: Record<string, string> = {
 
 function getTypeLabel(type: string) { return typeMap[type] || type }
 
-function handleEnter(row: any) { ElMessage.info('进入批量办理') }
-function handleSplit(row: any) { ElMessage.info('拆分合集') }
-function handleClose(row: any) { ElMessage.info('关闭合集') }
+function handleEnter(row: any) { ElMessage.info(`进入批量办理：${row.aggregateNo || row.id}`) }
+function handleSplit(row: any) { ElMessage.info(`拆分合集：${row.aggregateNo || row.id}`) }
+function handleClose(row: any) { ElMessage.info(`关闭合集：${row.aggregateNo || row.id}`) }
 
 async function loadData() {
   loading.value = true

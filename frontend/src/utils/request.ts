@@ -1,4 +1,5 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import axios from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import router from '../router'
 
@@ -26,7 +27,6 @@ const apiClient: AxiosInstance = axios.create({
   },
 })
 
-// 请求拦截器
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('access_token')
@@ -35,27 +35,21 @@ apiClient.interceptors.request.use(
     }
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
-// 响应拦截器
 apiClient.interceptors.response.use(
   (response: AxiosResponse<ApiResponse>) => {
     const { code, message, data } = response.data
-
     if (code !== 200) {
       ElMessage.error(message || '请求失败')
       return Promise.reject(new Error(message))
     }
-
     return data as any
   },
   (error) => {
     if (error.response) {
       const { status, data } = error.response
-
       switch (status) {
         case 401:
           ElMessageBox.confirm('登录已过期，请重新登录', '提示', {
@@ -69,34 +63,29 @@ apiClient.interceptors.response.use(
             router.push('/login')
           })
           break
-
         case 403:
           ElMessage.error('无权限访问')
           router.push('/403')
           break
-
         case 404:
           ElMessage.error('请求资源不存在')
           break
-
         case 500:
-          ElMessage.error('服务器内部错误')
+          ElMessage.error(data?.message || '服务器内部错误')
           break
-
         default:
           ElMessage.error(data?.message || '请求失败')
       }
     } else if (error.code === 'ECONNABORTED') {
-      ElMessage.error('请求超时，请重试')
+      ElMessage.error('请求超时，请稍后重试')
     } else {
-      ElMessage.error('网络错误，请检查网络连接')
+      ElMessage.error('网络错误，请检查连接')
     }
 
     return Promise.reject(error)
   }
 )
 
-// 封装请求方法
 export const request = {
   get<T = any>(url: string, params?: any, config?: AxiosRequestConfig): Promise<T> {
     return apiClient.get(url, { params, ...config })
@@ -123,8 +112,7 @@ export const request = {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (progressEvent) => {
         if (progressEvent.total && onProgress) {
-          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          onProgress(percent)
+          onProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total))
         }
       },
     })
@@ -142,5 +130,11 @@ export const request = {
   },
 }
 
-export { ApiResponse, PageResponse }
+export const get = request.get
+export const post = request.post
+export const put = request.put
+export const del = request.delete
+export const patch = request.patch
+
+export type { ApiResponse, PageResponse }
 export default request

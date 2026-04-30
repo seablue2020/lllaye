@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { v4 as uuidv4 } from 'uuid';
 import dayjs from 'dayjs';
+import { v4 as uuidv4 } from 'uuid';
+import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
 export class CaseService {
@@ -24,7 +24,7 @@ export class CaseService {
     handlerName?: string;
   }) {
     const caseNo = `AJ-${dayjs().format('YYYYMMDD')}-${uuidv4().substring(0, 4).toUpperCase()}`;
-    const title = dto.title || `${dto.applicantName} 诉 ${dto.respondentName} 欠薪案`;
+    const title = dto.title || `${dto.applicantName}诉${dto.respondentName}欠薪支持起诉案`;
 
     return this.prisma.case.create({
       data: {
@@ -60,15 +60,13 @@ export class CaseService {
     const { status, keyword } = params;
 
     const where: Prisma.CaseWhereInput = {};
-    if (status) {
-      where.status = status;
-    }
+    if (status) where.status = status;
     if (keyword) {
       where.OR = [
-        { caseNo: { contains: keyword } },
-        { title: { contains: keyword } },
-        { applicantName: { contains: keyword } },
-        { respondentName: { contains: keyword } },
+        { caseNo: { contains: keyword, mode: 'insensitive' } },
+        { title: { contains: keyword, mode: 'insensitive' } },
+        { applicantName: { contains: keyword, mode: 'insensitive' } },
+        { respondentName: { contains: keyword, mode: 'insensitive' } },
       ];
     }
 
@@ -82,16 +80,23 @@ export class CaseService {
       this.prisma.case.count({ where }),
     ]);
 
-    return { list: data, total, page, pageSize };
+    return {
+      list: data.map((item) => ({ ...item, amount: Number(item.amount || 0) })),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async findOne(id: string) {
-    return this.prisma.case.findUnique({
+    const caseEntity = await this.prisma.case.findUnique({
       where: { id },
       include: {
         documents: true,
         reviewResults: true,
       },
     });
+    if (!caseEntity) throw new NotFoundException('案件不存在');
+    return { ...caseEntity, amount: Number(caseEntity.amount || 0) };
   }
 }

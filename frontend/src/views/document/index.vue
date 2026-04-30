@@ -96,7 +96,7 @@ async function handleSubmit(row: any) {
 }
 
 function handleUseTemplate(tpl: any) {
-  ElMessage.info('请在案件审查页面选择案件后生成对应文书')
+  ElMessage.info(`请在案件审查页面选择案件后生成文书：${tpl.name || tpl.code}`)
 }
 
 async function loadData() {

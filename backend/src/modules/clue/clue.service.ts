@@ -1,11 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
-import { EncryptionService } from '../../common/encryption/encryption.service';
-import { RedisService } from '../../common/redis/redis.service';
-import { CreateClueDto, ClueQueryDto, ClueTriageDto, AggregateClueDto } from './dto/clue.dto';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as dayjs from 'dayjs';
 import { v4 as uuidv4 } from 'uuid';
+import { EncryptionService } from '../../common/encryption/encryption.service';
+import { PrismaService } from '../../common/prisma/prisma.service';
+import { RedisService } from '../../common/redis/redis.service';
+import { AggregateClueDto, ClueQueryDto, ClueTriageDto, CreateClueDto } from './dto/clue.dto';
 
 @Injectable()
 export class ClueService {
@@ -49,7 +49,7 @@ export class ClueService {
       data: { clueId: clue.id, node: 'submit', action: '提交线索', status: 'completed' },
     });
 
-    this.triggerAiPreAnalysis(clue.id, dto);
+    await this.triggerAiPreAnalysis(clue.id, dto);
 
     if (clue.isKey) {
       await this.createKeyClueTask(clue);
@@ -59,7 +59,8 @@ export class ClueService {
   }
 
   async findAll(query: ClueQueryDto) {
-    const { page = 1, pageSize = 20 } = query;
+    const page = Number(query.page || 1);
+    const pageSize = Number(query.pageSize || 20);
     const skip = (page - 1) * pageSize;
 
     const where: Prisma.ClueWhereInput = {};
@@ -70,12 +71,10 @@ export class ClueService {
     if (query.isKey !== undefined) where.isKey = query.isKey;
     if (query.isAggregated !== undefined) where.isAggregated = query.isAggregated;
     if (query.startDate) {
-      const start = new Date(query.startDate);
-      where.createdAt = { ...(where.createdAt as any || {}), gte: start };
+      where.createdAt = { ...(where.createdAt as Prisma.DateTimeFilter), gte: new Date(query.startDate) };
     }
     if (query.endDate) {
-      const end = new Date(query.endDate);
-      where.createdAt = { ...(where.createdAt as any || {}), lte: end };
+      where.createdAt = { ...(where.createdAt as Prisma.DateTimeFilter), lte: new Date(query.endDate) };
     }
     if (query.keyword) {
       where.OR = [
@@ -94,16 +93,38 @@ export class ClueService {
         take: pageSize,
         orderBy: { [query.sortField || 'createdAt']: query.sortOrder || 'desc' },
         select: {
-          id: true, clueNo: true, applicantName: true, applicantIdNoMasked: true, phoneMasked: true,
-          subjectType: true, subjectName: true, projectName: true, projectAddress: true,
-          amount: true, personCount: true, claimType: true, status: true, riskLevel: true,
-          isKey: true, isAggregated: true, aggregateNo: true, source: true, createdAt: true, updatedAt: true,
+          id: true,
+          clueNo: true,
+          applicantName: true,
+          applicantIdNoMasked: true,
+          phoneMasked: true,
+          subjectType: true,
+          subjectName: true,
+          projectName: true,
+          projectAddress: true,
+          projectAddressStd: true,
+          amount: true,
+          personCount: true,
+          claimType: true,
+          status: true,
+          riskLevel: true,
+          isKey: true,
+          isAggregated: true,
+          aggregateNo: true,
+          source: true,
+          createdAt: true,
+          updatedAt: true,
         },
       }),
       this.prisma.clue.count({ where }),
     ]);
 
-    return { list: clues, total, page, pageSize };
+    return {
+      list: clues.map((item) => ({ ...item, amount: Number(item.amount || 0) })),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async findOne(id: string) {
@@ -118,7 +139,7 @@ export class ClueService {
       },
     });
     if (!clue) throw new NotFoundException('线索不存在');
-    return clue;
+    return { ...clue, amount: Number(clue.amount || 0) };
   }
 
   async triage(id: string, dto: ClueTriageDto, operatorId: string, operatorName: string) {
@@ -128,8 +149,8 @@ export class ClueService {
     const updateData: Prisma.ClueUpdateInput = {
       triageOpinion: dto.opinion,
       triageAt: new Date(),
+      handler: { connect: { id: operatorId } },
     };
-    updateData['handler'] = { connect: { id: operatorId } };
 
     let nextStatus: string;
     let flowAction: string;
@@ -143,7 +164,7 @@ export class ClueService {
       case 'reject':
         nextStatus = 'rejected';
         flowAction = '不予受理';
-        updateData['rejectionReason'] = dto.rejectionReason;
+        updateData.rejectionReason = dto.rejectionReason;
         break;
       case 'transfer':
         nextStatus = 'triaged';
@@ -152,7 +173,7 @@ export class ClueService {
       default:
         throw new BadRequestException('无效的分流操作');
     }
-    updateData['status'] = nextStatus;
+    updateData.status = nextStatus;
 
     await Promise.all([
       this.prisma.clue.update({ where: { id }, data: updateData }),
@@ -174,7 +195,7 @@ export class ClueService {
     if (dto.clueIds?.length) where.id = { in: dto.clueIds };
 
     const clues = await this.prisma.clue.findMany({ where });
-    if (clues.length < 2) throw new BadRequestException('聚合至少需要2条线索');
+    if (clues.length < 2) throw new BadRequestException('联合线索至少需要 2 条线索');
 
     const groups = this.groupCluesByDimension(clues, dto.dimension);
     const results: any[] = [];
@@ -187,8 +208,8 @@ export class ClueService {
           name: `批量欠薪 - ${group[0].projectName}`,
           description: `共 ${group.length} 条线索聚合`,
           aggregateType: dto.dimension,
-          totalAmount: group.reduce((sum, c) => sum + Number(c.amount || 0), 0),
-          totalPersonCount: group.reduce((sum, c) => sum + c.personCount, 0),
+          totalAmount: group.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+          totalPersonCount: group.reduce((sum, item) => sum + item.personCount, 0),
           clueCount: group.length,
           createdBy: operatorId,
           createdByName: operatorName,
@@ -205,7 +226,7 @@ export class ClueService {
       });
 
       await this.prisma.clue.updateMany({
-        where: { id: { in: group.map((c) => c.id) } },
+        where: { id: { in: group.map((item) => item.id) } },
         data: { isAggregated: true, aggregateNo: aggregate.aggregateNo },
       });
 
@@ -227,7 +248,17 @@ export class ClueService {
         OR: [{ applicantName: clue.applicantName }, { subjectName: clue.subjectName }, { projectName: clue.projectName }],
         status: { not: 'rejected' },
       },
-      select: { id: true, clueNo: true, applicantName: true, applicantIdNoMasked: true, projectName: true, subjectName: true, claimOriginal: true, status: true, createdAt: true },
+      select: {
+        id: true,
+        clueNo: true,
+        applicantName: true,
+        applicantIdNoMasked: true,
+        projectName: true,
+        subjectName: true,
+        claimOriginal: true,
+        status: true,
+        createdAt: true,
+      },
       take: 10,
     });
   }
@@ -247,27 +278,82 @@ export class ClueService {
 
   async getHeatmapData() {
     const clues = await this.prisma.clue.findMany({
-      where: {
-        projectAddressStd: { not: Prisma.JsonNull },
+      select: {
+        id: true,
+        clueNo: true,
+        projectName: true,
+        subjectName: true,
+        projectAddress: true,
+        projectAddressStd: true,
+        amount: true,
+        personCount: true,
+        riskLevel: true,
+        status: true,
+        createdAt: true,
       },
-      select: { projectAddressStd: true, amount: true, personCount: true, riskLevel: true },
     });
 
-    const regionMap = new Map<string, { count: number; totalAmount: number; totalPerson: number; highRisk: number }>();
+    const regionMap = new Map<
+      string,
+      {
+        count: number;
+        totalAmount: number;
+        totalPerson: number;
+        highRisk: number;
+        mediumRisk: number;
+        latestCases: any[];
+      }
+    >();
 
     for (const clue of clues) {
-      const addr = clue.projectAddressStd as any;
-      const region = addr?.district || '未知区域';
-      const existing = regionMap.get(region) || { count: 0, totalAmount: 0, totalPerson: 0, highRisk: 0 };
-      regionMap.set(region, {
-        count: existing.count + 1,
-        totalAmount: existing.totalAmount + Number(clue.amount || 0),
-        totalPerson: existing.totalPerson + clue.personCount,
-        highRisk: existing.highRisk + (clue.riskLevel === 'high' ? 1 : 0),
+      const address = clue.projectAddressStd as any;
+      const district = address?.district || this.inferDistrict(clue.projectAddress) || '未知区域';
+      const current = regionMap.get(district) || {
+        count: 0,
+        totalAmount: 0,
+        totalPerson: 0,
+        highRisk: 0,
+        mediumRisk: 0,
+        latestCases: [],
+      };
+
+      current.count += 1;
+      current.totalAmount += Number(clue.amount || 0);
+      current.totalPerson += clue.personCount;
+      current.highRisk += clue.riskLevel === 'high' ? 1 : 0;
+      current.mediumRisk += clue.riskLevel === 'medium' ? 1 : 0;
+      current.latestCases.push({
+        id: clue.id,
+        clueNo: clue.clueNo,
+        projectName: clue.projectName,
+        subjectName: clue.subjectName,
+        amount: Number(clue.amount || 0),
+        personCount: clue.personCount,
+        riskLevel: clue.riskLevel || 'low',
+        status: clue.status,
+        createdAt: clue.createdAt,
       });
+      regionMap.set(district, current);
     }
 
-    return Array.from(regionMap.entries()).map(([name, data]) => ({ name, value: data.count, amount: data.totalAmount, personCount: data.totalPerson, highRisk: data.highRisk }));
+    return Array.from(regionMap.entries()).map(([district, data]) => {
+      const latestCases = data.latestCases
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 3);
+      const severityScore = data.highRisk * 3 + data.mediumRisk * 1.5 + data.count * 0.4 + data.totalAmount / 300000;
+
+      return {
+        name: district,
+        district,
+        value: data.count,
+        amount: data.totalAmount,
+        personCount: data.totalPerson,
+        highRisk: data.highRisk,
+        mediumRisk: data.mediumRisk,
+        severityScore: Number(severityScore.toFixed(2)),
+        latestCases,
+      };
+    });
   }
 
   private async generateClueNo(): Promise<string> {
@@ -279,21 +365,28 @@ export class ClueService {
   }
 
   private async triggerAiPreAnalysis(clueId: string, dto: CreateClueDto) {
-    const analysis = {
-      riskLevel: dto.personCount >= 30 ? 'high' : dto.personCount >= 10 ? 'medium' : 'low',
-      riskReasons: [
-        ...(dto.personCount >= 30 ? ['涉及人数≥30，存在群体性风险'] : []),
-        ...(dto.claimType === 'support_prosecution' ? ['申请支持起诉，需重点关注'] : []),
-      ],
-    };
+    const riskLevel = dto.personCount >= 30 || Number(dto.amount || 0) >= 500000
+      ? 'high'
+      : dto.personCount >= 10 || Number(dto.amount || 0) >= 100000
+      ? 'medium'
+      : 'low';
+    const riskReasons = [
+      ...(dto.personCount >= 30 ? ['涉及人数较多，存在群体性风险'] : []),
+      ...(Number(dto.amount || 0) >= 500000 ? ['涉案金额较大'] : []),
+      ...(dto.claimType === 'support_prosecution' ? ['申请支持起诉，需重点关注'] : []),
+    ];
 
     await this.prisma.clue.update({
       where: { id: clueId },
-      data: { aiPreAnalysis: analysis as any, riskLevel: analysis.riskLevel, riskReason: analysis.riskReasons.join('; ') },
+      data: {
+        aiPreAnalysis: { riskLevel, riskReasons } as any,
+        riskLevel,
+        riskReason: riskReasons.join('; '),
+      },
     });
 
     await this.prisma.clueFlowRecord.create({
-      data: { clueId, node: 'ai_analysis', action: 'AI预分析完成', operatorName: 'AI系统', status: 'completed' },
+      data: { clueId, node: 'ai_analysis', action: 'AI 预分析完成', operatorName: 'AI系统', status: 'completed' },
     });
   }
 
@@ -304,8 +397,8 @@ export class ClueService {
     await this.prisma.task.create({
       data: {
         type: 'clue_review',
-        title: `【重点线索】需要支持起诉审查 - ${clue.clueNo}`,
-        description: `申请人勾选了"需要支持起诉"，请及时处理`,
+        title: `【重点线索】支持起诉审查 - ${clue.clueNo}`,
+        description: '申请人请求支持起诉，请及时研判处理。',
         bizId: clue.id,
         bizType: 'clue',
         assigneeId: prosecutor.id,
@@ -320,7 +413,7 @@ export class ClueService {
         userId: prosecutor.id,
         type: 'task',
         title: '新重点线索待处理',
-        content: `线索 ${clue.clueNo} 需要支持起诉，请及时研判`,
+        content: `线索 ${clue.clueNo} 需要支持起诉研判，请及时处理。`,
         link: `/clue/${clue.id}`,
         priority: 'high',
       },
@@ -333,7 +426,7 @@ export class ClueService {
       data: {
         caseNo,
         clueId: clue.id,
-        title: `${clue.applicantName} 诉 ${clue.subjectName} 欠薪案`,
+        title: `${clue.applicantName}诉${clue.subjectName}欠薪支持起诉案`,
         description: clue.claimOriginal,
         applicantName: clue.applicantName,
         applicantIdNo: clue.applicantIdNo,
@@ -355,17 +448,30 @@ export class ClueService {
     for (const clue of clues) {
       let key: string;
       switch (dimension) {
-        case 'project': key = clue.projectName; break;
-        case 'subject': case 'contractor': key = clue.subjectName; break;
-        case 'area':
-          const addr = clue.projectAddressStd as any;
-          key = addr?.district || clue.projectAddress;
+        case 'project':
+          key = clue.projectName;
           break;
-        default: key = clue.projectName;
+        case 'subject':
+        case 'contractor':
+          key = clue.subjectName;
+          break;
+        case 'area': {
+          const address = clue.projectAddressStd as any;
+          key = address?.district || clue.projectAddress;
+          break;
+        }
+        default:
+          key = clue.projectName;
       }
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(clue);
     }
-    return Array.from(groups.values()).filter((g) => g.length >= 2);
+    return Array.from(groups.values()).filter((group) => group.length >= 2);
+  }
+
+  private inferDistrict(address?: string | null) {
+    if (!address) return null;
+    const match = address.match(/北京市([^市区县]+[区县])/);
+    return match?.[1] || null;
   }
 }

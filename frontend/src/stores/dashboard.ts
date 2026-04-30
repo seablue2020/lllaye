@@ -22,6 +22,7 @@ interface Task {
   bizType: string
   priority: string
   priorityLabel: string
+  status: string
   dueDate: string
   createdAt: string
   isOverdue: boolean
