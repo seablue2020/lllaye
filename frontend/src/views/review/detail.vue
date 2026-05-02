@@ -299,7 +299,7 @@ async function handleGenerateReport() {
 async function handleGenerateDocument(docType: string) {
   generatingDoc.value = true
   try {
-    const doc = await documentApi.generate(route.params.caseId as string, { docType })
+    const doc = await documentApi.generate(caseInfo.value?.id, { docType })
     ElMessage.success('文书已生成')
     router.push(`/document/${doc.id}`)
   } catch (error: any) {

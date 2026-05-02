@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BatchService } from './batch.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,7 +30,7 @@ export class BatchController {
   @Post(':id/process')
   @ApiOperation({ summary: '批量处理' })
   batchProcess(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() body: { action: string },
     @CurrentUser('id') userId: string,
     @CurrentUser('realName') realName: string,
@@ -40,13 +40,13 @@ export class BatchController {
 
   @Put(':id/split')
   @ApiOperation({ summary: '拆分合集' })
-  splitAggregate(@Param('id', ParseUUIDPipe) id: string, @Body() body: { clueIds: string[] }) {
+  splitAggregate(@Param('id') id: string, @Body() body: { clueIds: string[] }) {
     return this.batchService.splitAggregate(id, body.clueIds);
   }
 
   @Put(':id/close')
   @ApiOperation({ summary: '关闭合集' })
-  closeAggregate(@Param('id', ParseUUIDPipe) id: string) {
+  closeAggregate(@Param('id') id: string) {
     return this.batchService.closeAggregate(id);
   }
 

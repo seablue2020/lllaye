@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AiService, ClaimPolishingInput, AiReviewInput, DocumentGenerationInput } from './ai.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,7 +30,7 @@ export class AiController {
 
   @Post('generate-report/:caseId')
   @ApiOperation({ summary: 'AI 生成初步分析报告' })
-  generateReport(@Param('caseId', ParseUUIDPipe) caseId: string) {
+  generateReport(@Param('caseId') caseId: string) {
     return this.aiService.generateInitialReport(caseId, {});
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SystemService } from './system.service';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards/jwt-auth.guard';
@@ -28,14 +28,14 @@ export class SystemController {
   @Put('users/:id')
   @Roles('admin')
   @ApiOperation({ summary: '更新用户' })
-  updateUser(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
+  updateUser(@Param('id') id: string, @Body() dto: any) {
     return this.systemService.updateUser(id, dto);
   }
 
   @Delete('users/:id')
   @Roles('admin')
   @ApiOperation({ summary: '删除用户' })
-  deleteUser(@Param('id', ParseUUIDPipe) id: string) {
+  deleteUser(@Param('id') id: string) {
     return this.systemService.deleteUser(id);
   }
 
@@ -56,7 +56,7 @@ export class SystemController {
   @Put('roles/:id')
   @Roles('admin')
   @ApiOperation({ summary: '更新角色' })
-  updateRole(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
+  updateRole(@Param('id') id: string, @Body() dto: any) {
     return this.systemService.updateRole(id, dto);
   }
 
@@ -84,7 +84,7 @@ export class SystemController {
   @Put('dictionaries/:id')
   @Roles('admin')
   @ApiOperation({ summary: '更新字典' })
-  updateDictionary(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
+  updateDictionary(@Param('id') id: string, @Body() dto: any) {
     return this.systemService.updateDictionary(id, dto);
   }
 
