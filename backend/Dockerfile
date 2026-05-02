@@ -27,6 +27,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/templates ./templates
 
 # 强制重新生成 Prisma Client（使用当前安装的 Prisma 6，而非 builder 缓存的 Prisma 5）
 RUN npx prisma generate

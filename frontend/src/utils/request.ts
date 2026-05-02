@@ -43,13 +43,14 @@ apiClient.interceptors.response.use(
     const { code, message, data } = response.data
     if (code !== 200) {
       ElMessage.error(message || '请求失败')
-      return Promise.reject(new Error(message))
+      return Promise.reject(new Error(message || '请求失败'))
     }
     return data as any
   },
   (error) => {
     if (error.response) {
       const { status, data } = error.response
+      const message = data?.message || data?.error
       switch (status) {
         case 401:
           ElMessageBox.confirm('登录已过期，请重新登录', '提示', {
@@ -64,17 +65,17 @@ apiClient.interceptors.response.use(
           })
           break
         case 403:
-          ElMessage.error('无权限访问')
+          ElMessage.error(message || '无权限访问')
           router.push('/403')
           break
         case 404:
-          ElMessage.error('请求资源不存在')
+          ElMessage.error(message || '请求资源不存在')
           break
         case 500:
-          ElMessage.error(data?.message || '服务器内部错误')
+          ElMessage.error(message || '服务器内部错误')
           break
         default:
-          ElMessage.error(data?.message || '请求失败')
+          ElMessage.error(message || '请求失败')
       }
     } else if (error.code === 'ECONNABORTED') {
       ElMessage.error('请求超时，请稍后重试')
@@ -119,7 +120,7 @@ export const request = {
   },
 
   download(url: string, filename: string) {
-    return apiClient.get(url, { responseType: 'blob' }).then((response) => {
+    return apiClient.get(url, { responseType: 'blob' }).then((response: any) => {
       const blob = new Blob([response.data])
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)

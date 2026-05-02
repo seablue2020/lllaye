@@ -428,6 +428,10 @@ model DocumentTemplate {
   category    String   // 受理前文书, 调查取证文书, 支持起诉核心文书, 送达文书, 结案归档文书
   content     String   // 模板内容(含占位符)
   variables   Json?    // 模板变量列表
+  originalFileName String?
+  filePath    String?
+  fileSize    Int?
+  mimeType    String?
   version     Int      @default(1)
   status      String   @default("active") // active, inactive
   createdById String?

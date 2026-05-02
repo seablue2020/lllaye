@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
 
@@ -99,6 +101,91 @@ async function main() {
       where: { type_code: { type, code } },
       update: { type, code, label, value: code, sortOrder: i + 1, status: 'active' },
       create: { type, code, label, value: code, sortOrder: i + 1, status: 'active' },
+    });
+  }
+
+  const templateDir = path.join(process.cwd(), 'templates', 'documents');
+  const documentTemplates = [
+    {
+      name: '支持起诉书模板',
+      code: 'support_prosecution_template',
+      docType: 'support_prosecution',
+      category: '支持起诉书',
+      originalFileName: '支持起诉书模板.docx',
+      fileName: 'support_prosecution_template.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    },
+    {
+      name: '支持起诉民事起诉状模板',
+      code: 'civil_complaint_support_template',
+      docType: 'civil_complaint',
+      category: '民事起诉状',
+      originalFileName: '支持起诉民事起诉状模板.docx',
+      fileName: 'civil_complaint_support_template.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    },
+    {
+      name: '劳动争议纠纷民事起诉状（2025版）',
+      code: 'civil_complaint_labor_2025',
+      docType: 'civil_complaint',
+      category: '民事起诉状',
+      originalFileName: '劳动争议纠纷民事起诉状（2025版）.docx',
+      fileName: 'civil_complaint_labor_2025.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    },
+    {
+      name: '崔某劳务合同纠纷二审民事判决书',
+      code: 'civil_judgment_cui_20260407',
+      docType: 'civil_judgment',
+      category: '民事判决书',
+      originalFileName: '崔某劳务合同纠纷二审民事判决书_20260407下载.doc',
+      fileName: 'civil_judgment_cui_20260407.doc',
+      mimeType: 'application/msword',
+    },
+    {
+      name: '某公司、张某、魏某劳务合同纠纷二审民事判决书',
+      code: 'civil_judgment_company_20260407',
+      docType: 'civil_judgment',
+      category: '民事判决书',
+      originalFileName: '某公司,张某,魏某劳务合同纠纷二审民事判决书_20260407下载.doc',
+      fileName: 'civil_judgment_company_20260407.doc',
+      mimeType: 'application/msword',
+    },
+  ];
+
+  for (const template of documentTemplates) {
+    const absolutePath = path.join(templateDir, template.fileName);
+    const fileSize = fs.existsSync(absolutePath) ? fs.statSync(absolutePath).size : null;
+    const filePath = `templates/documents/${template.fileName}`;
+    await prisma.documentTemplate.upsert({
+      where: { code: template.code },
+      update: {
+        name: template.name,
+        docType: template.docType,
+        category: template.category,
+        content: `本地模板文件：${template.originalFileName}`,
+        variables: ['caseNo', 'applicantName', 'respondentName', 'claimContent', 'amount', 'personCount'],
+        originalFileName: template.originalFileName,
+        filePath,
+        fileSize,
+        mimeType: template.mimeType,
+        version: 1,
+        status: 'active',
+      },
+      create: {
+        name: template.name,
+        code: template.code,
+        docType: template.docType,
+        category: template.category,
+        content: `本地模板文件：${template.originalFileName}`,
+        variables: ['caseNo', 'applicantName', 'respondentName', 'claimContent', 'amount', 'personCount'],
+        originalFileName: template.originalFileName,
+        filePath,
+        fileSize,
+        mimeType: template.mimeType,
+        version: 1,
+        status: 'active',
+      },
     });
   }
 

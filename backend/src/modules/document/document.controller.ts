@@ -23,6 +23,12 @@ export class DocumentController {
     return this.documentService.findAll(caseId);
   }
 
+  @Get('grouped-by-case')
+  @ApiOperation({ summary: '按案件分组的文书列表' })
+  findGroupedByCase() {
+    return this.documentService.findGroupedByCase();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: '文书详情' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
@@ -38,11 +44,14 @@ export class DocumentController {
   @Post('generate')
   @ApiOperation({ summary: 'AI 生成文书' })
   generate(
-    @Body() body: { caseId: string; templateId: string },
+    @Body() body: { caseId: string; templateId?: string; docType?: string },
     @CurrentUser('sub') userId: string,
     @CurrentUser('realName') realName: string,
   ) {
-    return this.documentService.generateDocument(body.caseId, body.templateId, userId, realName);
+    return this.documentService.generateDocument(body.caseId, userId, realName, {
+      templateId: body.templateId,
+      docType: body.docType,
+    });
   }
 
   @Put(':id')

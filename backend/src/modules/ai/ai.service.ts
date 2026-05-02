@@ -74,7 +74,7 @@ export class AiService {
 
     try {
       const content = await this.chat(
-        '将口语化欠薪诉求转化为规范法律表述，只输出润色后的文本。',
+        '将口语化欠薪诉求转换为规范法律表述，只输出润色后的文本。',
         input.originalText,
         500,
         0.3,
@@ -99,7 +99,7 @@ export class AiService {
           '请根据案件信息判断是否符合支持起诉受理条件，并只返回 JSON。',
           'JSON 字段必须包含：conclusion、conclusionText、dimensions、riskLevel、riskReasons、missingEvidence、legalReferences。',
           'conclusion 只能是 accept、need_more_evidence、reject。',
-          'dimensions 数组元素字段为 dimension、result、reason、confidence、suggestions，result 只能是 pass、warning、fail。',
+          'dimensions 数组元素字段为 dimension、result、reason、confidence、suggestions；result 只能是 pass、warning、fail。',
         ].join('\n'),
         JSON.stringify(input, null, 2),
         3000,
@@ -121,10 +121,10 @@ export class AiService {
 
     try {
       return await this.chat(
-        '你是专业检察文书撰写助手，请根据案件信息生成规范的支持起诉意见书草稿。',
-        JSON.stringify(input),
-        3000,
-        0.3,
+        this.buildDocumentSystemPrompt(input.docType),
+        JSON.stringify(input, null, 2),
+        4500,
+        0.25,
         this.documentTimeoutMs,
       );
     } catch (error) {
@@ -139,7 +139,7 @@ export class AiService {
     try {
       return await this.chat(
         '你是专业检察业务分析助手，请根据案件信息生成《支持起诉案件初步分析报告》。',
-        JSON.stringify(caseData),
+        JSON.stringify(caseData, null, 2),
         4000,
         0.3,
         this.reportTimeoutMs,
@@ -204,6 +204,22 @@ export class AiService {
     };
   }
 
+  private buildDocumentSystemPrompt(docType: string) {
+    const common = [
+      '你是专业法律文书起草助手。',
+      '请仅根据给定案件信息生成可编辑的中文文书正文，不要输出 Markdown 代码块。',
+      '如信息中没有出现的事实，不得编造；可用“待核实”标注。',
+    ];
+
+    const prompts: Record<string, string> = {
+      support_prosecution: '生成规范的《支持起诉书》，结构包含当事人信息、基本案情、支持起诉理由、处理意见和落款。',
+      civil_complaint: '生成规范的《民事起诉状》，结构包含原告、被告、诉讼请求、事实与理由、证据目录提示、此致法院和落款。',
+      civil_judgment: '生成规范的《民事判决书》草稿，结构包含当事人、诉讼请求、查明事实、裁判理由、判决主文和诉讼费用处理。',
+    };
+
+    return [...common, prompts[docType] || '生成规范的案件办理文书。'].join('\n');
+  }
+
   private logAiFailure(action: string, error: any) {
     this.logger.warn(`AI ${action} failed: ${this.getFailureReason(error)} ${error?.message || ''}`.trim());
   }
@@ -221,7 +237,11 @@ export class AiService {
 
   private mockReview(input: AiReviewInput, fallbackReason: string): AiReviewOutput {
     const riskLevel: 'high' | 'medium' | 'low' =
-      input.personCount >= 30 || input.amount >= 500000 ? 'high' : input.personCount >= 10 || input.amount >= 100000 ? 'medium' : 'low';
+      input.personCount >= 30 || input.amount >= 500000
+        ? 'high'
+        : input.personCount >= 10 || input.amount >= 100000
+          ? 'medium'
+          : 'low';
     const hasEvidence = Boolean(input.evidenceTypes?.length);
     const riskReasons = [
       ...(input.personCount >= 30 ? [`涉及${input.personCount}人，存在群体性风险`] : []),
@@ -240,7 +260,9 @@ export class AiService {
       {
         dimension: '诉求明确性',
         result: input.claimOriginal ? 'pass' : 'warning',
-        reason: input.claimOriginal ? `诉求指向${input.respondentName || input.subjectName || '被申请主体'}拖欠劳动报酬。` : '诉求事实描述不足。',
+        reason: input.claimOriginal
+          ? `诉求指向${input.respondentName || input.subjectName || '被申请主体'}拖欠劳动报酬。`
+          : '诉求事实描述不足。',
         confidence: 0.86,
         suggestions: input.claimOriginal ? '' : '补充欠薪期间、工资标准、结算依据。',
       },
@@ -294,18 +316,69 @@ export class AiService {
   }
 
   private mockGenerateDocument(input: DocumentGenerationInput): string {
-    return [
-      `支持起诉意见书（草稿）`,
-      '',
+    const label = this.getDocTypeLabel(input.docType);
+    const baseInfo = [
       `案号：${input.caseNo}`,
-      `申请人：${input.applicantName}`,
-      `被申请人：${input.respondentName}`,
+      `申请人/原告：${input.applicantName}`,
+      `被申请人/被告：${input.respondentName}`,
+      `涉案金额：${Number(input.amount || 0).toLocaleString()}元`,
+      `涉及人数：${input.personCount || 1}人`,
       '',
-      '一、案件基本情况',
-      `申请人反映${input.projectName || '相关项目'}存在拖欠劳动报酬情形，涉案金额约${Number(input.amount || 0).toLocaleString()}元，涉及${input.personCount || 1}人。`,
+      '基本案情：',
+      input.claimContent || '待补充案件事实。',
+    ].join('\n');
+
+    if (input.docType === 'civil_complaint') {
+      return [
+        '民事起诉状',
+        '',
+        baseInfo,
+        '',
+        '诉讼请求：',
+        `1. 判令被告向原告支付拖欠劳动报酬${Number(input.amount || 0).toLocaleString()}元；`,
+        '2. 判令被告承担本案诉讼费用。',
+        '',
+        '事实与理由：',
+        '原告因提供劳动与被告发生劳动报酬争议。根据现有材料，被告尚未足额支付劳动报酬，已影响原告合法权益。原告现依法提起诉讼，请求人民法院依法支持。',
+        '',
+        '此致',
+        '人民法院',
+        '',
+        `具状人：${input.applicantName}`,
+        new Date().toLocaleDateString('zh-CN'),
+      ].join('\n');
+    }
+
+    if (input.docType === 'civil_judgment') {
+      return [
+        '民事判决书（草稿）',
+        '',
+        baseInfo,
+        '',
+        '经审理查明：',
+        input.claimContent || '案件事实待进一步查明。',
+        '',
+        '本院认为：',
+        '劳动者取得劳动报酬的合法权益受法律保护。被告未能充分证明已足额支付相关劳动报酬，应依法承担相应民事责任。',
+        '',
+        '判决如下：',
+        `一、被告于本判决生效之日起十日内向原告支付劳动报酬${Number(input.amount || 0).toLocaleString()}元；`,
+        '二、驳回原告其他诉讼请求。',
+        '',
+        '如不服本判决，可依法提起上诉。',
+      ].join('\n');
+    }
+
+    return [
+      `${label}（草稿）`,
       '',
-      '二、审查意见',
-      '经初步审查，申请事项属于劳动报酬权益保护范围。建议承办人结合证据材料进一步核实劳动关系、欠薪金额和责任主体。',
+      baseInfo,
+      '',
+      '支持起诉理由：',
+      '经初步审查，申请人反映的劳动报酬权益受损事项属于支持起诉工作关注范围。现有材料显示，被申请人存在拖欠劳动报酬的可能，应依法保障劳动者合法权益。',
+      '',
+      '处理意见：',
+      `建议依法支持${input.applicantName}就相关劳动报酬争议向人民法院提起民事诉讼，并继续补强劳动关系、欠薪金额和责任主体等证据材料。`,
       '',
       `承办人：${input.handlerName || '待填写'}`,
       new Date().toLocaleDateString('zh-CN'),
@@ -334,5 +407,14 @@ export class AiService {
       '## 四、风险提示',
       (caseData.personCount || 1) >= 30 ? '本案涉及人数较多，建议同步做好群体性风险预案。' : '本案风险整体可控，建议持续关注当事人动态。',
     ].join('\n');
+  }
+
+  private getDocTypeLabel(docType: string) {
+    const labels: Record<string, string> = {
+      support_prosecution: '支持起诉书',
+      civil_complaint: '民事起诉状',
+      civil_judgment: '民事判决书',
+    };
+    return labels[docType] || '法律文书';
   }
 }

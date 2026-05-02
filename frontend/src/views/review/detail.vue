@@ -2,15 +2,31 @@
   <div class="review-detail-page page-container" v-loading="loading">
     <div class="page-header">
       <div class="header-title">
-        <el-button text @click="router.push('/review')"><el-icon><ArrowLeft /></el-icon>返回</el-button>
+        <el-button text @click="router.push('/review')">
+          <el-icon><ArrowLeft /></el-icon>
+          返回
+        </el-button>
         <span class="page-title">{{ caseInfo?.title || 'AI辅助审查' }}</span>
         <el-tag v-if="caseInfo" size="small">{{ caseInfo.caseNo }}</el-tag>
-        <el-tag :type="getConclusionTagType(reviewInfo?.conclusion)" v-if="reviewInfo">
+        <el-tag v-if="reviewInfo" :type="getConclusionTagType(reviewInfo?.conclusion)">
           {{ getConclusionLabel(reviewInfo?.conclusion) }}
         </el-tag>
       </div>
       <div class="btn-group">
         <el-button :loading="reporting" @click="handleGenerateReport">生成分析报告</el-button>
+        <el-dropdown trigger="click" @command="handleGenerateDocument">
+          <el-button :loading="generatingDoc">
+            生成文书
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="support_prosecution">支持起诉书</el-dropdown-item>
+              <el-dropdown-item command="civil_complaint">民事起诉状</el-dropdown-item>
+              <el-dropdown-item command="civil_judgment">民事判决书</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button type="primary" @click="handleStartReview" :loading="reviewing">
           {{ reviewing ? 'AI审查中' : reviewInfo ? '重新审查' : '启动AI审查' }}
         </el-button>
@@ -45,7 +61,9 @@
                   <el-table-column prop="dimension" label="审查维度" width="150" />
                   <el-table-column label="结果" width="90">
                     <template #default="{ row }">
-                      <el-tag size="small" :type="getResultTag(row.result)">{{ getResultLabel(row.result) }}</el-tag>
+                      <el-tag size="small" :type="getResultTag(row.result)">
+                        {{ getResultLabel(row.result) }}
+                      </el-tag>
                     </template>
                   </el-table-column>
                   <el-table-column prop="reason" label="理由" min-width="220" />
@@ -60,7 +78,8 @@
                 <div class="card-title">证据审查</div>
                 <div v-if="reviewInfo.missingEvidence?.length">
                   <div v-for="item in reviewInfo.missingEvidence" :key="item" class="missing-item">
-                    <el-icon color="#e5a50a"><Warning /></el-icon> {{ item }}
+                    <el-icon color="#e5a50a"><Warning /></el-icon>
+                    {{ item }}
                   </div>
                 </div>
                 <div v-else class="muted-text">暂无明显缺失证据</div>
@@ -72,7 +91,8 @@
           </el-row>
           <div v-if="reviewInfo.riskReasons?.length" class="result-card risk-card">
             <div class="card-title risk-title">
-              <el-icon color="#c01c28"><WarningFilled /></el-icon>风险提示
+              <el-icon color="#c01c28"><WarningFilled /></el-icon>
+              风险提示
             </div>
             <div v-for="reason in reviewInfo.riskReasons" :key="reason" class="risk-reason">{{ reason }}</div>
           </div>
@@ -134,8 +154,16 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, ChatDotRound, Connection, Document, Warning, WarningFilled } from '@element-plus/icons-vue'
-import { caseApi, reviewApi } from '@/api'
+import {
+  ArrowDown,
+  ArrowLeft,
+  ChatDotRound,
+  Connection,
+  Document,
+  Warning,
+  WarningFilled,
+} from '@element-plus/icons-vue'
+import { caseApi, documentApi, reviewApi } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -143,6 +171,7 @@ const router = useRouter()
 const loading = ref(false)
 const reviewing = ref(false)
 const reporting = ref(false)
+const generatingDoc = ref(false)
 const activeTab = ref('review')
 const caseInfo = ref<any>(null)
 const reviewInfo = ref<any>(null)
@@ -236,7 +265,7 @@ async function handleStartReview() {
     ElMessage.success(res?.fallback ? '已使用规则兜底生成审查意见' : 'AI审查完成')
     await loadData()
   } catch (error: any) {
-    ElMessage.error(error?.message || '审查失败')
+    ElMessage.error(error?.response?.data?.message || error?.message || '审查失败')
   } finally {
     reviewing.value = false
   }
@@ -264,6 +293,19 @@ async function handleGenerateReport() {
     ElMessage.error('生成失败')
   } finally {
     reporting.value = false
+  }
+}
+
+async function handleGenerateDocument(docType: string) {
+  generatingDoc.value = true
+  try {
+    const doc = await documentApi.generate(route.params.caseId as string, { docType })
+    ElMessage.success('文书已生成')
+    router.push(`/document/${doc.id}`)
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.message || error?.message || '信息不全，无法生成')
+  } finally {
+    generatingDoc.value = false
   }
 }
 

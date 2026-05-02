@@ -183,10 +183,11 @@ export const aiApi = {
 
 export const documentApi = {
   list: (caseId?: string) => request.get<any[]>('/documents', { caseId }),
+  groupedByCase: () => request.get<any[]>('/documents/grouped-by-case'),
   getById: (id: string) => request.get<any>(`/documents/${id}`),
   getTemplates: (category?: string) => request.get<any[]>('/documents/templates', { category }),
-  generate: (caseId: string, templateId: string) =>
-    request.post<any>('/documents/generate', { caseId, templateId }),
+  generate: (caseId: string, options: { templateId?: string; docType?: string }) =>
+    request.post<any>('/documents/generate', { caseId, ...options }, { timeout: 120000 }),
   update: (id: string, content: string) => request.put(`/documents/${id}`, { content }),
   submit: (id: string) => request.post(`/documents/${id}/submit`),
   approve: (id: string, opinion: string, signatureUrl?: string) =>
