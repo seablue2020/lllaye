@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { DocumentService } from './document.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -31,21 +31,15 @@ export class DocumentController {
 
   @Get(':id')
   @ApiOperation({ summary: '文书详情' })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  findOne(@Param('id') id: string) {
     return this.documentService.findOne(id);
-  }
-
-  @Get(':id/versions')
-  @ApiOperation({ summary: '文书版本历史' })
-  getVersions(@Param('id', ParseUUIDPipe) id: string) {
-    return this.documentService.getVersions(id);
   }
 
   @Post('generate')
   @ApiOperation({ summary: 'AI 生成文书' })
   generate(
     @Body() body: { caseId: string; templateId?: string; docType?: string },
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @CurrentUser('realName') realName: string,
   ) {
     return this.documentService.generateDocument(body.caseId, userId, realName, {
@@ -57,18 +51,24 @@ export class DocumentController {
   @Put(':id')
   @ApiOperation({ summary: '编辑文书' })
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() body: { content: string },
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
   ) {
     return this.documentService.updateDocument(id, body.content, userId);
+  }
+
+  @Get(':id/versions')
+  @ApiOperation({ summary: '文书版本历史' })
+  getVersions(@Param('id') id: string) {
+    return this.documentService.getVersions(id);
   }
 
   @Post(':id/submit')
   @ApiOperation({ summary: '提交审批' })
   submit(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('sub') userId: string,
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
     @CurrentUser('realName') realName: string,
   ) {
     return this.documentService.submitForApproval(id, userId, realName);
@@ -77,9 +77,9 @@ export class DocumentController {
   @Post(':id/approve')
   @ApiOperation({ summary: '审批通过' })
   approve(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() body: { opinion: string; signatureUrl?: string },
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
   ) {
     return this.documentService.approve(id, userId, body.opinion, body.signatureUrl);
   }
@@ -87,16 +87,16 @@ export class DocumentController {
   @Post(':id/reject')
   @ApiOperation({ summary: '审批拒绝' })
   reject(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id') id: string,
     @Body() body: { opinion: string },
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
   ) {
     return this.documentService.reject(id, userId, body.opinion);
   }
 
   @Post(':id/archive')
   @ApiOperation({ summary: '归档文书' })
-  archive(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('sub') userId: string) {
+  archive(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.documentService.archive(id, userId);
   }
 }

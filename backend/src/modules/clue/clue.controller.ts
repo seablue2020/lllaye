@@ -62,7 +62,7 @@ export class ClueController {
   triage(
     @Param('id') id: string,
     @Body() dto: ClueTriageDto,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @CurrentUser('realName') realName: string,
   ) {
     return this.clueService.triage(id, dto, userId, realName);
@@ -72,7 +72,7 @@ export class ClueController {
   @ApiOperation({ summary: '线索智能聚合' })
   aggregate(
     @Body() dto: AggregateClueDto,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @CurrentUser('realName') realName: string,
   ) {
     return this.clueService.aggregate(dto, userId, realName);

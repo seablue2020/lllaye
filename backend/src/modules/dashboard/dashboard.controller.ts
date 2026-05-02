@@ -19,7 +19,7 @@ export class DashboardController {
 
   @Get('tasks')
   @ApiOperation({ summary: '获取待办任务列表' })
-  getTasks(@CurrentUser('sub') userId: string) {
+    getTasks(@CurrentUser('id') userId: string) {
     return this.dashboardService.getTasks(userId);
   }
 

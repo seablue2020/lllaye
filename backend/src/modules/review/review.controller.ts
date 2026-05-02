@@ -27,7 +27,7 @@ export class ReviewController {
   @ApiOperation({ summary: '确认审查意见' })
   confirmReview(
     @Param('caseId') caseId: string,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @Body() body: { dimension?: string },
   ) {
     return this.reviewService.confirmReview(caseId, userId, body.dimension);

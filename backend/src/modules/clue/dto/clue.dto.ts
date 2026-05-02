@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsNumber, IsBoolean, IsArray, Min, MaxLength, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNumber, IsBoolean, IsArray, Min, Max, MaxLength, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
@@ -178,7 +178,7 @@ export class AggregateClueDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
-  @MaxLength(1)
+  @Max(1)
   similarityThreshold?: number;
 
   @ApiPropertyOptional({ description: '待聚合的线索ID列表' })

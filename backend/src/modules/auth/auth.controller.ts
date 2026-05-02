@@ -42,7 +42,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: '退出登录' })
-  async logout(@CurrentUser('sub') userId: string) {
+  async logout(@CurrentUser('id') userId: string) {
     return this.authService.logout(userId);
   }
 
@@ -50,7 +50,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '获取当前用户信息' })
-  async getProfile(@CurrentUser('sub') userId: string) {
+  async getProfile(@CurrentUser('id') userId: string) {
     return this.authService.getProfile(userId);
   }
 }

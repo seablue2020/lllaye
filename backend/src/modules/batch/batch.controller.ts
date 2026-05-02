@@ -21,7 +21,7 @@ export class BatchController {
   @ApiOperation({ summary: '新建类案合集' })
   createAggregate(
     @Body() body: { name: string; dimension: string; clueIds: string[] },
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @CurrentUser('realName') realName: string,
   ) {
     return this.batchService.createAggregate(body, userId, realName);
@@ -32,7 +32,7 @@ export class BatchController {
   batchProcess(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { action: string },
-    @CurrentUser('sub') userId: string,
+    @CurrentUser('id') userId: string,
     @CurrentUser('realName') realName: string,
   ) {
     return this.batchService.batchProcess(id, body.action, userId, realName);
