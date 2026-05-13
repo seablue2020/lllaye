@@ -17,6 +17,12 @@ export class BatchController {
     return this.batchService.getAggregates();
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: '合集详情' })
+  getAggregateDetail(@Param('id') id: string) {
+    return this.batchService.getAggregateDetail(id);
+  }
+
   @Post('aggregate')
   @ApiOperation({ summary: '新建类案合集' })
   createAggregate(

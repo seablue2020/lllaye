@@ -1,6 +1,12 @@
 # Cursor settings (local)
 .cursor/
 
+# Claude Code local settings
+.claude/settings.local.json
+
+# Archives
+*.zip
+
 # Dependencies
 node_modules/
 .yarn/

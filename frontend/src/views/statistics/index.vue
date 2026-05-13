@@ -68,11 +68,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, onBeforeUnmount } from 'vue'
+import * as echarts from 'echarts'
 import { statisticsApi } from '@/api'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
+
+const CHART_COLORS = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4']
 
 const activeTab = ref('overview')
 const dateRange = ref<[Date, Date]>([dayjs().subtract(30, 'day').toDate(), new Date()])
@@ -83,6 +86,9 @@ const regionData = ref<any>(null)
 const quality = ref<any>(null)
 const sourceChartRef = ref<HTMLElement>()
 const claimTypeChartRef = ref<HTMLElement>()
+
+let sourceChart: echarts.ECharts | null = null
+let claimTypeChart: echarts.ECharts | null = null
 
 async function loadData() {
   loading.value = true
@@ -105,14 +111,83 @@ async function loadData() {
 }
 
 function renderCharts() {
-  if (!sourceChartRef.value || !overview.value) return
-  // 简单文字展示（ECharts需额外引入）
-  sourceChartRef.value.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#666">图表加载中</div>'
+  renderSourceChart()
+  renderClaimTypeChart()
+}
+
+function renderSourceChart() {
+  if (!sourceChartRef.value) return
+  const data = overview.value?.sourceDistribution || []
+  if (data.length === 0) {
+    sourceChartRef.value.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#909399;font-size:14px">暂无数据</div>'
+    return
+  }
+  if (!sourceChart) {
+    sourceChart = echarts.init(sourceChartRef.value)
+  }
+  sourceChart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c}条 ({d}%)' },
+    legend: { bottom: '3%', left: 'center' },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '65%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+      label: { show: true, formatter: '{b}\n{c}条' },
+      data: data.map((item: any, index: number) => ({
+        name: item.label,
+        value: item.count,
+        itemStyle: { color: CHART_COLORS[index % CHART_COLORS.length] },
+      })),
+    }],
+  })
+}
+
+function renderClaimTypeChart() {
+  if (!claimTypeChartRef.value) return
+  const data = overview.value?.claimTypeDistribution || []
+  if (data.length === 0) {
+    claimTypeChartRef.value.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#909399;font-size:14px">暂无数据</div>'
+    return
+  }
+  if (!claimTypeChart) {
+    claimTypeChart = echarts.init(claimTypeChartRef.value)
+  }
+  claimTypeChart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c}条 ({d}%)' },
+    legend: { bottom: '3%', left: 'center' },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '65%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+      label: { show: true, formatter: '{b}\n{c}条' },
+      data: data.map((item: any, index: number) => ({
+        name: item.label,
+        value: item.count,
+        itemStyle: { color: CHART_COLORS[(index + 4) % CHART_COLORS.length] },
+      })),
+    }],
+  })
+}
+
+function resizeCharts() {
+  sourceChart?.resize()
+  claimTypeChart?.resize()
 }
 
 function handleExport() { ElMessage.info('导出功能开发中') }
 
-onMounted(() => { loadData() })
+onMounted(() => {
+  loadData()
+  window.addEventListener('resize', resizeCharts)
+})
+
+onBeforeUnmount(() => {
+  sourceChart?.dispose()
+  claimTypeChart?.dispose()
+  window.removeEventListener('resize', resizeCharts)
+})
 </script>
 
 <style scoped>

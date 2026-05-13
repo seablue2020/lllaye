@@ -288,10 +288,27 @@ export class DocumentService {
     return updated;
   }
 
+  private getCurrentLevelRole(level: number): string | null {
+    const roleMap: Record<number, string> = { 1: 'dept_head', 2: 'dept_chief' };
+    return roleMap[level] || null;
+  }
+
   async approve(id: string, approverId: string, opinion: string, signatureUrl?: string) {
+    const doc = await this.prisma.document.findUnique({ where: { id } });
+    if (!doc) throw new NotFoundException('文书不存在');
+    if (doc.status !== 'submitted') throw new BadRequestException('文书不在待审批状态');
+
+    const roleCode = this.getCurrentLevelRole(doc.currentLevel);
+    if (!roleCode) throw new BadRequestException('当前审批层级无效');
+
     const approval = await this.prisma.docApproval.findFirst({
-      where: { documentId: id, approverId, status: 'pending' },
-      orderBy: { sequence: 'asc' },
+      where: {
+        documentId: id,
+        level: doc.currentLevel,
+        approver: { role: { code: roleCode } },
+        status: 'pending',
+      },
+      include: { approver: { include: { role: true } } },
     });
     if (!approval) throw new BadRequestException('您没有待处理的审批任务');
 
@@ -329,8 +346,20 @@ export class DocumentService {
   }
 
   async reject(id: string, approverId: string, opinion: string) {
+    const doc = await this.prisma.document.findUnique({ where: { id } });
+    if (!doc) throw new NotFoundException('文书不存在');
+    if (doc.status !== 'submitted') throw new BadRequestException('文书不在待审批状态');
+
+    const roleCode = this.getCurrentLevelRole(doc.currentLevel);
+    if (!roleCode) throw new BadRequestException('当前审批层级无效');
+
     const approval = await this.prisma.docApproval.findFirst({
-      where: { documentId: id, approverId, status: 'pending' },
+      where: {
+        documentId: id,
+        level: doc.currentLevel,
+        approver: { role: { code: roleCode } },
+        status: 'pending',
+      },
     });
     if (!approval) throw new BadRequestException('您没有待处理的审批任务');
 

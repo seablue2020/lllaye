@@ -1,15 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../common/prisma/prisma.service';
 import * as dayjs from 'dayjs';
+import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Injectable()
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
-  async getMetrics() {
+  async getMetrics(userId: string) {
     const todayStart = dayjs().startOf('day').toDate();
     const todayEnd = dayjs().endOf('day').toDate();
     const monthStart = dayjs().startOf('month').toDate();
+    const overdueBefore = dayjs().subtract(3, 'day').toDate();
 
     const [
       pendingClues,
@@ -24,18 +25,18 @@ export class DashboardService {
     ] = await Promise.all([
       this.prisma.clue.count({ where: { status: 'pending_review' } }),
       this.prisma.clue.count({ where: { isKey: true, status: { notIn: ['closed', 'rejected'] } } }),
-      this.prisma.case.count(),
-      this.prisma.case.count({ where: { status: 'closed' } }),
+      this.prisma.case.count({ where: { handlerId: userId } }),
+      this.prisma.case.count({ where: { handlerId: userId, status: 'closed' } }),
       this.prisma.clue.count({ where: { createdAt: { gte: todayStart, lt: todayEnd } } }),
       this.prisma.clue.count({
         where: {
           status: 'pending_review',
-          createdAt: { lt: dayjs().subtract(3, 'day').toDate() },
+          createdAt: { lt: overdueBefore },
         },
       }),
-      this.prisma.case.count({ where: { filedAt: { gte: monthStart } } }),
-      this.prisma.case.count({ where: { reviewConclusion: { in: ['accepted', 'rejected'] } } }),
-      this.prisma.case.count({ where: { reviewConclusion: 'accepted' } }),
+      this.prisma.case.count({ where: { handlerId: userId, filedAt: { gte: monthStart } } }),
+      this.prisma.case.count({ where: { handlerId: userId, reviewConclusion: { in: ['accepted', 'rejected'] } } }),
+      this.prisma.case.count({ where: { handlerId: userId, reviewConclusion: 'accepted' } }),
     ]);
 
     return {
@@ -51,17 +52,20 @@ export class DashboardService {
   }
 
   async getTasks(userId: string) {
+    const priorityOrder: Record<string, number> = {
+      urgent: 0,
+      high: 1,
+      normal: 2,
+      low: 3,
+    };
+
     const tasks = await this.prisma.task.findMany({
       where: {
         assigneeId: userId,
         status: { in: ['pending', 'in_progress'] },
       },
-      orderBy: [
-        { priority: 'asc' },
-        { dueDate: 'asc' },
-        { createdAt: 'asc' },
-      ],
-      take: 20,
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
+      take: 30,
       select: {
         id: true,
         type: true,
@@ -76,12 +80,18 @@ export class DashboardService {
       },
     });
 
-    return tasks.map((task) => ({
-      ...task,
-      priorityLabel: this.getPriorityLabel(task.priority),
-      typeLabel: this.getTaskTypeLabel(task.type),
-      isOverdue: Boolean(task.dueDate && dayjs(task.dueDate).isBefore(dayjs())),
-    }));
+    return tasks
+      .sort((a, b) => {
+        const priorityDiff = (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9);
+        if (priorityDiff !== 0) return priorityDiff;
+        return new Date(a.dueDate || a.createdAt).getTime() - new Date(b.dueDate || b.createdAt).getTime();
+      })
+      .map((task) => ({
+        ...task,
+        typeLabel: this.getTaskTypeLabel(task.type),
+        priorityLabel: this.getPriorityLabel(task.priority),
+        isOverdue: Boolean(task.dueDate && dayjs(task.dueDate).isBefore(dayjs())),
+      }));
   }
 
   async getRiskWarnings() {
@@ -114,9 +124,10 @@ export class DashboardService {
   }
 
   async getTodayDynamics() {
-    const today = dayjs().startOf('day').toDate();
+    const todayStart = dayjs().startOf('day').toDate();
+    const todayEnd = dayjs().endOf('day').toDate();
     const clues = await this.prisma.clue.findMany({
-      where: { createdAt: { gte: today } },
+      where: { createdAt: { gte: todayStart, lt: todayEnd } },
       orderBy: { createdAt: 'desc' },
       take: 30,
       select: {

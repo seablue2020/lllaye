@@ -56,13 +56,13 @@
       <div class="area-left">
         <div class="card">
           <div class="card-header">
-            <span class="card-title">我的待办任务</span>
-            <el-button text size="small" @click="router.push('/clue')">查看全部</el-button>
+            <span class="card-title">我的办案任务</span>
+            <el-tag type="primary" size="small">{{ tasks.length }} 项</el-tag>
           </div>
           <div class="task-list" v-loading="loading">
             <div v-if="tasks.length === 0" class="empty-state">
               <el-icon :size="40" color="#d0d0d0"><SuccessFilled /></el-icon>
-              <p>暂无待办任务</p>
+              <p>暂无办案任务</p>
             </div>
             <div
               v-for="task in tasks"
@@ -71,16 +71,19 @@
               :class="{ overdue: task.isOverdue }"
               @click="handleTaskClick(task)"
             >
-              <div class="task-left">
-                <el-tag size="small" :type="getPriorityType(task.priority)">
-                  {{ task.priorityLabel }}
-                </el-tag>
-                <el-tag size="small" type="info">{{ task.typeLabel }}</el-tag>
+              <div class="task-topline">
+                <div class="task-left">
+                  <el-tag size="small" :type="getPriorityType(task.priority)">
+                    {{ task.priorityLabel }}
+                  </el-tag>
+                  <el-tag size="small" type="info">{{ task.typeLabel }}</el-tag>
+                </div>
+                <span class="task-date">{{ formatTaskDate(task.dueDate || task.createdAt) }}</span>
               </div>
               <div class="task-title">{{ task.title }}</div>
+              <div class="task-desc">{{ task.description || getBizTypeLabel(task.bizType) }}</div>
               <div class="task-actions">
                 <el-button type="primary" size="small" text @click.stop="handleTaskClick(task)">立即办理</el-button>
-                <el-button size="small" text @click.stop>一键分流</el-button>
               </div>
             </div>
           </div>
@@ -108,7 +111,7 @@
               </div>
             </div>
             <div v-if="todayDynamics.length === 0" class="empty-state">
-              <p>暂无今日动态</p>
+              <p>暂无今日线索动态</p>
             </div>
           </div>
         </div>
@@ -122,7 +125,7 @@
               <el-option label="按线索数" value="count" />
               <el-option label="按金额" value="amount" />
               <el-option label="按人数" value="person" />
-              <el-option label="按严重性" value="severity" />
+              <el-option label="按严重度" value="severity" />
             </el-select>
           </div>
           <div class="map-shell">
@@ -140,7 +143,7 @@
                 <div><strong>{{ selectedRegion.highRisk }}</strong><span>高风险</span></div>
               </div>
               <div v-if="selectedRegion?.latestCases?.length" class="latest-list">
-                <div class="latest-title">最近案件</div>
+                <div class="latest-title">最近线索</div>
                 <div
                   v-for="item in selectedRegion.latestCases"
                   :key="item.id"
@@ -153,11 +156,11 @@
                   </div>
                   <div class="latest-project">{{ item.projectName }}</div>
                   <div class="latest-meta">
-                    {{ formatCurrency(item.amount) }} · {{ item.personCount }}人 · {{ formatDate(item.createdAt) }}
+                    {{ formatCurrency(item.amount) }} / {{ item.personCount }}人 / {{ formatDate(item.createdAt) }}
                   </div>
                 </div>
               </div>
-              <div v-else class="empty-latest">点击区县查看最近案件</div>
+              <div v-else class="empty-latest">点击区县查看最近线索</div>
             </div>
           </div>
           <div class="map-legend">
@@ -247,24 +250,24 @@ const todayDynamics = computed(() => dashboardStore.todayDynamics)
 const taskBadgeCount = computed(() => tasks.value.filter((item) => item.status === 'pending').length)
 const selectedRegion = computed(() => heatmapData.value.find((item) => item.district === selectedDistrict.value))
 
-function getPriorityType(priority: string): any {
-  const map: Record<string, any> = {
+function getPriorityType(priority: string): 'success' | 'warning' | 'info' | 'primary' | 'danger' | undefined {
+  const map: Record<string, 'success' | 'warning' | 'info' | 'primary' | 'danger' | undefined> = {
     urgent: 'danger',
     high: 'warning',
-    normal: '',
+    normal: undefined,
     low: 'info',
   }
-  return map[priority] || ''
+  return map[priority]
 }
 
-function getTagType(tag: string) {
+function getTagType(tag: string): 'success' | 'warning' | 'info' | 'primary' | 'danger' | undefined {
   if (tag === '高风险') return 'danger'
   if (tag === '联合线索') return 'primary'
   if (tag === '支持起诉') return 'warning'
   return 'info'
 }
 
-function getRiskTag(riskLevel: string) {
+function getRiskTag(riskLevel: string): 'success' | 'warning' | 'danger' {
   if (riskLevel === 'high') return 'danger'
   if (riskLevel === 'medium') return 'warning'
   return 'success'
@@ -276,12 +279,25 @@ function getRiskLabel(riskLevel: string) {
   return '低风险'
 }
 
+function getBizTypeLabel(bizType: string) {
+  const labels: Record<string, string> = {
+    clue: '线索办理',
+    case: '案件办理',
+    document: '文书办理',
+  }
+  return labels[bizType] || '办案任务'
+}
+
 function formatCurrency(value: number) {
   return `${(Number(value || 0) / 10000).toFixed(1)}万`
 }
 
 function formatDate(value: string) {
   return dayjs(value).format('MM-DD')
+}
+
+function formatTaskDate(value: string) {
+  return dayjs(value).format('MM-DD HH:mm')
 }
 
 function getMapValue(item: HeatmapRegion) {
@@ -367,7 +383,7 @@ function renderMap() {
   })
 }
 
-async function handleTaskClick(task: any) {
+function handleTaskClick(task: { bizType: string; bizId: string }) {
   if (task.bizType === 'clue') {
     router.push(`/clue/${task.bizId}`)
   } else if (task.bizType === 'case') {
@@ -552,7 +568,7 @@ onBeforeUnmount(() => {
 
 .task-list {
   padding: 12px;
-  max-height: 280px;
+  max-height: 320px;
   overflow-y: auto;
 }
 
@@ -579,6 +595,7 @@ onBeforeUnmount(() => {
   border-left: 3px solid var(--color-danger);
 }
 
+.task-topline,
 .task-left,
 .task-actions,
 .dynamics-tags {
@@ -586,10 +603,27 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
+.task-topline {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.task-date {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .task-title {
   font-size: 13px;
   color: var(--color-text-primary);
   line-height: 1.4;
+}
+
+.task-desc {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .dynamics-card {

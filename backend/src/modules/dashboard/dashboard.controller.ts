@@ -1,8 +1,8 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { DashboardService } from './dashboard.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DashboardService } from './dashboard.service';
 
 @ApiTags('dashboard')
 @ApiBearerAuth()
@@ -13,13 +13,13 @@ export class DashboardController {
 
   @Get('metrics')
   @ApiOperation({ summary: '获取核心办案指标' })
-  getMetrics() {
-    return this.dashboardService.getMetrics();
+  getMetrics(@CurrentUser('id') userId: string) {
+    return this.dashboardService.getMetrics(userId);
   }
 
   @Get('tasks')
-  @ApiOperation({ summary: '获取待办任务列表' })
-    getTasks(@CurrentUser('id') userId: string) {
+  @ApiOperation({ summary: '获取我的待办任务列表' })
+  getTasks(@CurrentUser('id') userId: string) {
     return this.dashboardService.getTasks(userId);
   }
 

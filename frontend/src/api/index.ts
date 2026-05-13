@@ -73,7 +73,7 @@ export const dashboardApi = {
         priority: string
         priorityLabel: string
         status: string
-        dueDate: string
+        dueDate: string | null
         createdAt: string
         isOverdue: boolean
       }[]
@@ -199,6 +199,7 @@ export const documentApi = {
 
 export const batchApi = {
   getAggregates: () => request.get<any[]>('/batch/aggregates'),
+  getAggregateDetail: (id: string) => request.get<any>(`/batch/${id}`),
   create: (data: { name: string; dimension: string; clueIds: string[] }) =>
     request.post('/batch/aggregate', data),
   process: (id: string, action: string) => request.post(`/batch/${id}/process`, { action }),

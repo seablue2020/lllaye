@@ -72,6 +72,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '批量办案', icon: 'Grid' },
       },
       {
+        path: 'batch/:id',
+        name: 'BatchDetail',
+        component: () => import('@/views/batch/Detail.vue'),
+        meta: { title: '批量办理详情', parent: 'Batch' },
+      },
+      {
         path: 'statistics',
         name: 'Statistics',
         component: () => import('@/views/statistics/index.vue'),

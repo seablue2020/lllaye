@@ -126,10 +126,55 @@ export class BatchService {
   }
 
   async closeAggregate(aggregateId: string) {
+    const aggregate = await this.prisma.caseAggregate.findUnique({
+      where: { id: aggregateId },
+      include: { aggregateClues: true },
+    });
+    if (!aggregate) throw new NotFoundException('类案合集不存在');
+
+    const clueIds = aggregate.aggregateClues.map((ac) => ac.clueId);
+    if (clueIds.length > 0) {
+      await this.prisma.clue.updateMany({
+        where: { id: { in: clueIds } },
+        data: { isAggregated: false, aggregateNo: null },
+      });
+    }
+
     return this.prisma.caseAggregate.update({
       where: { id: aggregateId },
       data: { status: 'closed', closedAt: new Date() },
     });
+  }
+
+  async getAggregateDetail(id: string) {
+    const aggregate = await this.prisma.caseAggregate.findUnique({
+      where: { id },
+      include: {
+        aggregateClues: {
+          include: {
+            clue: {
+              select: {
+                id: true,
+                clueNo: true,
+                status: true,
+                riskLevel: true,
+                applicantName: true,
+                subjectName: true,
+                projectName: true,
+                projectAddress: true,
+                amount: true,
+                personCount: true,
+                isKey: true,
+                createdAt: true,
+              },
+            },
+          },
+          orderBy: { isRepresentative: 'desc' },
+        },
+      },
+    });
+    if (!aggregate) throw new NotFoundException('类案合集不存在');
+    return aggregate;
   }
 
   async getSimilarCases(projectName: string) {

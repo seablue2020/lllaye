@@ -17,13 +17,13 @@ interface Task {
   type: string
   typeLabel: string
   title: string
-  description: string
+  description: string | null
   bizId: string
   bizType: string
   priority: string
   priorityLabel: string
   status: string
-  dueDate: string
+  dueDate: string | null
   createdAt: string
   isOverdue: boolean
 }

@@ -211,6 +211,7 @@ async function main() {
         riskReason: riskLevel === 'high' ? '涉及人数较多; 涉案金额较大; 存在群体性风险' : riskLevel === 'medium' ? '人数或金额达到重点关注阈值' : '常规线索',
         isKey,
         createdAt,
+        handlerId: 'user-prosecutor',
       },
       create: {
         clueNo,
@@ -236,6 +237,7 @@ async function main() {
         riskReason: riskLevel === 'high' ? '涉及人数较多; 涉案金额较大; 存在群体性风险' : riskLevel === 'medium' ? '人数或金额达到重点关注阈值' : '常规线索',
         isKey,
         createdAt,
+        handlerId: 'user-prosecutor',
       },
     });
   }
@@ -288,28 +290,219 @@ async function main() {
     });
   }
 
-  const taskClueNos = ['CX-20260402-0003', 'CX-20260405-0006', 'CX-20260406-0007', 'CX-20260408-0009', 'CX-20260410-0011', 'CX-20260417-0018', 'CX-20260430-0022'];
-  for (const clueNo of taskClueNos) {
-    const clue = clueByNo.get(clueNo)!;
-    const task = {
-      id: `task-${clueNo}`,
-      type: 'clue_review',
-      title: clue.riskLevel === 'high' ? `【高风险预警】${clueNo} 欠薪线索` : `支持起诉审查 - ${clueNo}`,
-      description: `${clue.projectName}，涉及${clue.personCount}人，金额${Number(clue.amount || 0).toLocaleString()}元。`,
-      bizId: clue.id,
-      bizType: 'clue',
-      assigneeId: 'user-prosecutor',
-      assigneeName: '李检察官',
-      assignerId: 'user-admin',
-      assignerName: '系统管理员',
-      status: 'pending',
-      priority: clue.riskLevel === 'high' ? 'urgent' : 'high',
-      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-    };
-    await prisma.task.upsert({ where: { id: task.id }, update: task, create: task });
+  const today = new Date();
+  const todayNo = `CX-${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+
+  const todayClues = [
+    {
+      clueNo: `${todayNo}-0001`,
+      applicantName: '田晓东',
+      subjectName: '北京海淀科技园建设有限公司',
+      projectName: '海淀区中关村软件园三期项目',
+      projectAddress: '北京市海淀区西北旺镇软件园三期',
+      district: '海淀区',
+      amount: 420000,
+      personCount: 32,
+      claimType: 'support_prosecution',
+      source: 'hotline_12345',
+      riskLevel: 'high',
+      isKey: true,
+      claimOriginal: '32名建筑工人反映项目完工后被拖欠工资42万元，多次向公司讨要未果。',
+    },
+    {
+      clueNo: `${todayNo}-0002`,
+      applicantName: '林秀英',
+      subjectName: '北京朝阳园林绿化有限公司',
+      projectName: '朝阳区望京SOHO景观绿化项目',
+      projectAddress: '北京市朝阳区望京街道望京SOHO',
+      district: '朝阳区',
+      amount: 56000,
+      personCount: 5,
+      claimType: 'wage_complaint',
+      source: 'frontend',
+      riskLevel: 'low',
+      isKey: false,
+      claimOriginal: '绿化班组5名工人反映项目尾款未结清。',
+    },
+    {
+      clueNo: `${todayNo}-0003`,
+      applicantName: '郑大伟',
+      subjectName: '北京顺义仓储物流有限公司',
+      projectName: '顺义区空港物流园二期项目',
+      projectAddress: '北京市顺义区后沙峪镇裕安路',
+      district: '顺义区',
+      amount: 380000,
+      personCount: 27,
+      claimType: 'support_prosecution',
+      source: 'dept_share',
+      riskLevel: 'medium',
+      isKey: true,
+      claimOriginal: '27名工人反映仓储物流项目拖欠工资38万元，存在群体性上访风险。',
+    },
+  ];
+
+  for (let index = 0; index < todayClues.length; index += 1) {
+    const c = todayClues[index];
+    const createdAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9 + index, 15 + index * 5, 0);
+    await prisma.clue.upsert({
+      where: { clueNo: c.clueNo },
+      update: {
+        applicantName: c.applicantName,
+        subjectType: '企业',
+        subjectName: c.subjectName,
+        projectName: c.projectName,
+        projectAddress: c.projectAddress,
+        projectAddressStd: { province: '北京市', city: '北京市', district: c.district, project: c.projectName },
+        amount: c.amount,
+        personCount: c.personCount,
+        claimType: c.claimType,
+        claimOriginal: c.claimOriginal,
+        source: c.source,
+        status: 'pending_review',
+        riskLevel: c.riskLevel,
+        riskReason: c.riskLevel === 'high' ? '涉及人数较多; 涉案金额较大; 存在群体性风险' : c.riskLevel === 'medium' ? '人数或金额达到重点关注阈值' : '常规线索',
+        isKey: c.isKey,
+        createdAt,
+        handlerId: 'user-prosecutor',
+      },
+      create: {
+        clueNo: c.clueNo,
+        applicantName: c.applicantName,
+        applicantIdNo: `11010819${String(900000 + index).padStart(6, '0')}`,
+        applicantIdNoMasked: `110108****${String(2000 + index)}`,
+        phone: `138${String(2000 + index).padStart(8, '0')}`,
+        phoneMasked: `138****${String(2000 + index)}`,
+        subjectType: '企业',
+        subjectName: c.subjectName,
+        subjectIdNo: `911101${String(2000000000 + index)}`,
+        subjectContact: `010-7${String(2000000 + index)}`,
+        projectName: c.projectName,
+        projectAddress: c.projectAddress,
+        projectAddressStd: { province: '北京市', city: '北京市', district: c.district, project: c.projectName },
+        amount: c.amount,
+        personCount: c.personCount,
+        claimType: c.claimType,
+        claimOriginal: c.claimOriginal,
+        source: c.source,
+        status: 'pending_review',
+        riskLevel: c.riskLevel,
+        riskReason: c.riskLevel === 'high' ? '涉及人数较多; 涉案金额较大; 存在群体性风险' : c.riskLevel === 'medium' ? '人数或金额达到重点关注阈值' : '常规线索',
+        isKey: c.isKey,
+        createdAt,
+        handlerId: 'user-prosecutor',
+      },
+    });
   }
 
-  console.log('Beijing demo data seeded. Login: admin/123456');
+  // 4-6天前的线索（触发超期预警样式）
+  const fourDaysAgo = new Date(today.getTime() - 4 * 24 * 60 * 60 * 1000);
+  const fiveDaysAgo = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000);
+  const sixDaysAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
+
+  const overdueClues = [
+    {
+      clueNo: 'CX-20260426-OV01',
+      applicantName: '马建国',
+      subjectName: '北京朝阳建筑工程有限公司',
+      projectName: '朝阳区CBD核心区写字楼项目',
+      projectAddress: '北京市朝阳区建国门外大街',
+      district: '朝阳区',
+      amount: 520000,
+      personCount: 38,
+      claimType: 'support_prosecution',
+      source: 'hotline_12345',
+      riskLevel: 'high',
+      isKey: true,
+      claimOriginal: '38名建筑工人反映项目完工后被拖欠工资52万元，工人多次讨要未果。',
+      createdAt: sixDaysAgo,
+    },
+    {
+      clueNo: 'CX-20260427-OV02',
+      applicantName: '孙丽华',
+      subjectName: '北京海淀教育设施有限公司',
+      projectName: '海淀区学校扩建工程项目',
+      projectAddress: '北京市海淀区学院路',
+      district: '海淀区',
+      amount: 180000,
+      personCount: 15,
+      claimType: 'wage_complaint',
+      source: 'frontend',
+      riskLevel: 'medium',
+      isKey: false,
+      claimOriginal: '学校扩建项目15名工人反映工资被拖欠。',
+      createdAt: fiveDaysAgo,
+    },
+    {
+      clueNo: 'CX-20260428-OV03',
+      applicantName: '赵大海',
+      subjectName: '北京顺义农业设施有限公司',
+      projectName: '顺义区农业产业园温室大棚项目',
+      projectAddress: '北京市顺义区杨镇',
+      district: '顺义区',
+      amount: 290000,
+      personCount: 22,
+      claimType: 'support_prosecution',
+      source: 'dept_share',
+      riskLevel: 'high',
+      isKey: true,
+      claimOriginal: '22名工人反映农业产业园项目拖欠工资29万元。',
+      createdAt: fourDaysAgo,
+    },
+  ];
+
+  for (let index = 0; index < overdueClues.length; index += 1) {
+    const c = overdueClues[index];
+    await prisma.clue.upsert({
+      where: { clueNo: c.clueNo },
+      update: {
+        applicantName: c.applicantName,
+        subjectType: '企业',
+        subjectName: c.subjectName,
+        projectName: c.projectName,
+        projectAddress: c.projectAddress,
+        projectAddressStd: { province: '北京市', city: '北京市', district: c.district, project: c.projectName },
+        amount: c.amount,
+        personCount: c.personCount,
+        claimType: c.claimType,
+        claimOriginal: c.claimOriginal,
+        source: c.source,
+        status: 'pending_review',
+        riskLevel: c.riskLevel,
+        riskReason: c.riskLevel === 'high' ? '涉及人数较多; 涉案金额较大; 存在群体性风险' : '人数或金额达到重点关注阈值',
+        isKey: c.isKey,
+        createdAt: c.createdAt,
+        handlerId: 'user-prosecutor',
+      },
+      create: {
+        clueNo: c.clueNo,
+        applicantName: c.applicantName,
+        applicantIdNo: `11010519${String(700000 + index).padStart(6, '0')}`,
+        applicantIdNoMasked: `110105****${String(3000 + index)}`,
+        phone: `138${String(3000 + index).padStart(8, '0')}`,
+        phoneMasked: `138****${String(3000 + index)}`,
+        subjectType: '企业',
+        subjectName: c.subjectName,
+        subjectIdNo: `911101${String(3000000000 + index)}`,
+        subjectContact: `010-8${String(3000000 + index)}`,
+        projectName: c.projectName,
+        projectAddress: c.projectAddress,
+        projectAddressStd: { province: '北京市', city: '北京市', district: c.district, project: c.projectName },
+        amount: c.amount,
+        personCount: c.personCount,
+        claimType: c.claimType,
+        claimOriginal: c.claimOriginal,
+        source: c.source,
+        status: 'pending_review',
+        riskLevel: c.riskLevel,
+        riskReason: c.riskLevel === 'high' ? '涉及人数较多; 涉案金额较大; 存在群体性风险' : '人数或金额达到重点关注阈值',
+        isKey: c.isKey,
+        createdAt: c.createdAt,
+        handlerId: 'user-prosecutor',
+      },
+    });
+  }
+
+  console.log('Beijing demo data seeded. Login: admin/123456, prosecutor/123456');
 }
 
 main()
