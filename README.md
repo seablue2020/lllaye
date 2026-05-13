@@ -1,75 +1,151 @@
 # 欠薪支持起诉智能办案平台（检察端）
 
-欠薪支持起诉智能办案平台，基于 Vue 3 + NestJS + PostgreSQL 构建，为检察机关提供欠薪线索管理、AI辅助审查、批量办案等功能。
+欠薪支持起诉智能办案平台面向检察机关办理欠薪支持起诉业务，提供线索管理、AI 辅助审查、案件办理、批量办案、文书生成、数据看板和系统管理等能力。
+
+## 技术栈
+
+### 前端
+
+- Vue 3 + TypeScript
+- Vite 5
+- Vue Router 4
+- Pinia
+- Element Plus
+- ECharts
+- Axios
+- Day.js、lodash-es
+- Sass、ESLint、Prettier、vue-tsc
+
+### 后端
+
+- NestJS 10 + TypeScript
+- Prisma 6
+- PostgreSQL 16 + PostGIS
+- Redis + Bull 队列
+- JWT + Passport
+- Swagger/OpenAPI
+- class-validator、class-transformer
+- bcrypt、node-forge
+- ExcelJS
+- Jest
+
+### 部署与运行
+
+- Docker
+- Docker Compose
+- Nginx（前端容器）
+
+### AI 集成
+
+- 后端提供 AI 模块，支持通过环境变量配置外部大模型服务。
+- 如使用 DeepSeek 等兼容服务，请在 `backend/.env` 中配置对应的 API 地址、模型和密钥。
 
 ## 项目结构
 
-```
+```text
 tiaozhanbei/
-├── docker-compose.yml         # 容器编排（PostgreSQL + Redis + 后端 + 前端）
-├── backend/                    # NestJS 后端
-│   ├── src/
-│   │   ├── common/           # 公共模块（Prisma, Redis, 加密, 拦截器等）
-│   │   ├── modules/          # 功能模块（auth, clue, review, document, batch, dashboard, statistics, system, ai）
-│   │   └── main.ts           # 入口
+├── docker-compose.yml          # PostgreSQL + Redis + 后端 + 前端编排
+├── backend/                    # NestJS 后端服务
 │   ├── prisma/
-│   │   ├── schema.prisma     # 数据库模型（20+ 表）
-│   │   └── seed.ts           # 初始化数据脚本
+│   │   ├── schema.prisma       # Prisma 数据模型，启用 PostGIS 扩展
+│   │   └── seed.ts             # 初始化数据脚本
+│   ├── scripts/                # 容器内可执行的辅助脚本
+│   ├── src/
+│   │   ├── common/             # 通用能力：Prisma、Redis、加密、过滤器、拦截器等
+│   │   ├── modules/            # 业务模块：auth、clue、review、document、batch、dashboard、statistics、system、ai 等
+│   │   └── main.ts             # 应用入口、CORS、API 版本、Swagger 配置
 │   ├── Dockerfile
 │   └── package.json
-├── frontend/                  # Vue 3 前端
+├── frontend/                   # Vue 3 前端应用
 │   ├── src/
-│   │   ├── api/              # API 接口定义
-│   │   ├── assets/           # 静态资源/CSS
-│   │   ├── components/       # 公共组件（MainLayout 布局）
-│   │   ├── router/           # 路由配置
-│   │   ├── stores/           # Pinia 状态管理
-│   │   ├── utils/            # 工具函数（axios 封装）
-│   │   └── views/            # 页面视图（16+ 个页面）
+│   │   ├── api/                # API 请求封装
+│   │   ├── assets/             # 样式与静态资源
+│   │   ├── components/         # 通用组件
+│   │   ├── router/             # 路由配置
+│   │   ├── stores/             # Pinia 状态管理
+│   │   ├── utils/              # 工具函数
+│   │   └── views/              # 页面视图
+│   ├── vite.config.ts          # Vite 配置，本地开发代理 /api 到后端
 │   ├── Dockerfile
 │   └── package.json
 └── README.md
 ```
 
-## 启动命令
+## 环境要求
 
-### 方式一：Docker Compose（推荐，一次启动全部服务）
+- Node.js 20+
+- npm
+- Docker 与 Docker Compose
+
+## 快速启动
+
+### 方式一：Docker Compose 启动全部服务
 
 ```bash
-# 启动所有服务（后端 + 前端 + PostgreSQL + Redis）
 docker-compose up -d
+```
 
-# 查看运行状态
+查看服务状态：
+
+```bash
 docker-compose ps
+```
 
-# 查看日志
+查看日志：
+
+```bash
 docker-compose logs -f
+```
 
-# 停止所有服务
+停止服务：
+
+```bash
 docker-compose down
+```
 
-# 停止并删除数据卷（慎用，会清除数据库）
+如需同时清空数据库和 Redis 数据卷：
+
+```bash
 docker-compose down -v
 ```
 
-### 方式二：本地开发（前后端分开启动）
+## 本地开发
 
-#### 1. 确保 Docker 中的数据库和后端在运行
+### 1. 启动基础依赖
 
 ```bash
-# 仅启动后端依赖（PostgreSQL + Redis）
 docker-compose up -d postgres redis
-
-# 等待数据库就绪后，初始化数据（只需执行一次）
-docker exec tiaozhanbei-backend npx prisma db push --accept-data-loss
-docker cp backend/scripts/seed.js tiaozhanbei-backend:/app/seed.js
-docker exec tiaozhanbei-backend node seed.js
-
-# 启动后端
-docker-compose up -d backend
 ```
 
-#### 2. 启动前端开发服务器
+### 2. 配置后端环境变量
+
+复制并按需修改后端环境变量：
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+本地连接 Docker PostgreSQL 时，`DATABASE_URL` 通常使用：
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/tiaozhanbei"
+```
+
+### 3. 启动后端
+
+```bash
+cd backend
+npm install
+npm run prisma:generate
+npm run prisma:push
+npm run prisma:seed
+npm run start:dev
+```
+
+后端默认监听 `http://localhost:8080`，接口统一使用 URI 版本前缀 `/api/v1`。
+
+### 4. 启动前端
 
 ```bash
 cd frontend
@@ -77,63 +153,108 @@ npm install
 npm run dev
 ```
 
-前端开发服务器运行在 http://localhost:3000，会自动代理 `/api` 请求到 `http://localhost:8080`。
+前端开发服务默认运行在 `http://localhost:3000`，`/api` 请求会代理到 `http://localhost:8080/api/v1`。
 
-## 初始化数据
+## 常用脚本
 
-首次启动时，seed 脚本会自动创建：
+### 后端
 
-- **5 个角色**：系统管理员、承办检察官、部门负责人、分管副检察长、审计员
-- **3 个机构**：省/市/区人民检察院
-- **4 个用户**：
+```bash
+npm run start:dev        # 开发模式启动
+npm run build            # 构建后端
+npm run start:prod       # 运行构建产物
+npm run lint             # ESLint 自动修复
+npm run test             # 单元测试
+npm run test:e2e         # E2E 测试
+npm run prisma:generate  # 生成 Prisma Client
+npm run prisma:push      # 同步数据库结构
+npm run prisma:seed      # 初始化种子数据
+```
+
+### 前端
+
+```bash
+npm run dev      # 开发服务器
+npm run build    # 类型检查并构建
+npm run preview  # 预览构建产物
+npm run lint     # ESLint 自动修复
+npm run format   # Prettier 格式化 src
+```
+
+## 访问地址
+
+| 服务 | 地址 | 说明 |
+| --- | --- | --- |
+| 前端页面（Docker） | http://localhost | 登录页 |
+| 前端页面（本地开发） | http://localhost:3000 | Vite 开发服务器 |
+| 后端 API | http://localhost:8080/api/v1 | REST API |
+| API 文档 | http://localhost:8080/api/docs | Swagger/OpenAPI |
+| PostgreSQL | localhost:5432 | 默认用户/密码：postgres/postgres |
+| Redis | localhost:6379 | 默认无密码 |
+
+## 初始化账号
+
+种子数据会创建角色、机构、字典和示例业务数据，并提供以下测试账号：
 
 | 用户名 | 密码 | 角色 |
-|--------|------|------|
+| --- | --- | --- |
 | admin | 123456 | 系统管理员 |
 | prosecutor | 123456 | 承办检察官 |
 | dept_head | 123456 | 部门负责人 |
 | deputy_chief | 123456 | 分管副检察长 |
 
-- **20 条字典数据**（线索状态、诉求类型、风险等级等）
-- **3 条示例线索数据**
+## 主要功能模块
 
-## 访问地址
-
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| 前端页面（Docker） | http://localhost | 登录页，账号 admin/123456 |
-| 前端页面（本地开发） | http://localhost:3000 | 同上，但需确保后端容器运行 |
-| 后端 API | http://localhost:8080 | RESTful API |
-| API 文档 | http://localhost:8080/api/docs | Swagger/OpenAPI 文档 |
-| PostgreSQL | localhost:5432 | 用户名/密码：postgres/postgres |
-| Redis | localhost:6379 | 无密码 |
-
-## 技术栈
-
-- **前端**：Vue 3 + TypeScript + Vite + Element Plus + Pinia + ECharts
-- **后端**：NestJS + Prisma + PostgreSQL + Redis + JWT
-- **容器化**：Docker + Docker Compose
-- **AI 集成**：支持接入 DeepSeek API（需配置 AI_API_KEY）
+- 首页数据看板
+- 欠薪线索登记、分流、聚合与流转
+- AI 辅助审查与风险分析
+- 案件办理与任务管理
+- 批量办案
+- 法律文书生成、编辑与审批
+- 统计分析
+- 用户、角色、机构、字典等系统管理
 
 ## 常见问题
 
-### Q: 前端空白页？
-确保后端服务已启动：`docker-compose ps` 确认 backend 状态为 healthy。
+### 前端页面无法访问或空白
 
-### Q: 登录失败？
-执行初始化脚本：
+确认前后端服务是否正常：
+
+```bash
+docker-compose ps
+```
+
+本地开发时还需要确认 Vite 代理目标 `http://localhost:8080` 可访问。
+
+### 登录失败
+
+确认数据库已同步并执行过种子脚本：
+
+```bash
+cd backend
+npm run prisma:push
+npm run prisma:seed
+```
+
+如果使用 Docker 后端容器，可执行：
+
 ```bash
 docker cp backend/scripts/seed.js tiaozhanbei-backend:/app/seed.js
 docker exec tiaozhanbei-backend node seed.js
 ```
 
-### Q: 端口被占用？
-修改 `docker-compose.yml` 中的端口映射，或修改 `frontend/vite.config.ts` 中的 server.port。
+### 端口被占用
 
-### Q: 重置数据库？
+- 修改 `docker-compose.yml` 中的端口映射。
+- 或修改 `frontend/vite.config.ts` 中的 `server.port`。
+- 后端端口可通过 `backend/.env` 中的 `PORT` 配置。
+
+### 重置数据库
+
 ```bash
-docker-compose down -v          # 删除数据卷
-docker-compose up -d            # 重新创建并启动
-# 重新执行 seed 脚本
-docker exec tiaozhanbei-backend node seed.js
+docker-compose down -v
+docker-compose up -d postgres redis
+cd backend
+npm run prisma:push
+npm run prisma:seed
 ```
